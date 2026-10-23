@@ -1,0 +1,729 @@
+/**
+ * Microsoft Whiteboard — Multi-Board Persistence Engine & Gallery Store
+ *
+ * Reverse-Engineered from REA Evidence:
+ * - Module 517955 & 179019 (blueboard/chunks/boardpicker.*.js)
+ *   -> BoardPickerConnected, Board list persistence, new board creation, board deletion & duplication
+ * - Module 795434 (blueboard/chunks/app-router.*.js)
+ *   -> Board routing, transition between BoardPicker gallery and active whiteboard canvas
+ */
+
+import { useSyncExternalStore } from 'react';
+import type { CanvasEntity } from '../canvas/sceneGraph';
+import type { GridPatternType } from '../canvas/grid';
+import type { CameraMatrix } from '../canvas/camera';
+import { sceneStore } from './sceneStore';
+import { canvasStore } from './canvasStore';
+import { ExportEngine } from '../tools/ExportEngine';
+
+export interface BoardCanvasData {
+  entities: CanvasEntity[];
+  gridPattern?: GridPatternType;
+  paperColor?: string;
+  camera?: CameraMatrix;
+}
+
+export interface BoardRecord {
+  id: string;
+  title: string;
+  thumbnailDataUrl: string;
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+  canvasData: BoardCanvasData;
+}
+
+export type BoardSummary = Omit<BoardRecord, 'canvasData'>;
+
+export interface BoardStoreState {
+  boards: BoardSummary[];
+  activeBoardId: string | null;
+  currentView: 'gallery' | 'board';
+  searchQuery: string;
+  isSaving: boolean;
+  isLoading: boolean;
+  lastSavedAt: number | null;
+}
+
+const DB_NAME = 'MicrosoftWhiteboardDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'boards';
+const LAST_ACTIVE_KEY = 'whiteboard:lastActiveBoardId';
+const LOCALSTORAGE_PREFIX = 'whiteboard:board:';
+const LOCALSTORAGE_LIST_KEY = 'whiteboard:board_ids';
+
+// ================= IndexedDB Helper =================
+class BoardStorage {
+  private dbPromise: Promise<IDBDatabase> | null = null;
+  private hasIndexedDB = typeof window !== 'undefined' && 'indexedDB' in window;
+
+  private getDB(): Promise<IDBDatabase> {
+    if (!this.hasIndexedDB) {
+      return Promise.reject(new Error('IndexedDB not supported'));
+    }
+    if (!this.dbPromise) {
+      this.dbPromise = new Promise((resolve, reject) => {
+        const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            store.createIndex('updatedAt', 'updatedAt', { unique: false });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return this.dbPromise;
+  }
+
+  public async getAllSummaries(): Promise<BoardSummary[]> {
+    if (this.hasIndexedDB) {
+      try {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.getAll();
+          req.onsuccess = () => {
+            const records = (req.result as BoardRecord[]) || [];
+            // Sort by updatedAt descending
+            records.sort(
+              (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            );
+            resolve(
+              records.map(({ id, title, thumbnailDataUrl, createdAt, updatedAt }) => ({
+                id,
+                title,
+                thumbnailDataUrl,
+                createdAt,
+                updatedAt,
+              }))
+            );
+          };
+          req.onerror = () => reject(req.error);
+        });
+      } catch (err) {
+        console.warn('[BoardStorage] IndexedDB getAll error, falling back to LocalStorage', err);
+      }
+    }
+
+    // LocalStorage Fallback
+    try {
+      const idsRaw = localStorage.getItem(LOCALSTORAGE_LIST_KEY);
+      const ids: string[] = idsRaw ? JSON.parse(idsRaw) : [];
+      const summaries: BoardSummary[] = [];
+      for (const id of ids) {
+        const raw = localStorage.getItem(LOCALSTORAGE_PREFIX + id);
+        if (raw) {
+          const { id: bId, title, thumbnailDataUrl, createdAt, updatedAt } = JSON.parse(raw);
+          summaries.push({ id: bId, title, thumbnailDataUrl, createdAt, updatedAt });
+        }
+      }
+      summaries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return summaries;
+    } catch {
+      return [];
+    }
+  }
+
+  public async getBoard(id: string): Promise<BoardRecord | null> {
+    if (this.hasIndexedDB) {
+      try {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.get(id);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (err) {
+        console.warn('[BoardStorage] IndexedDB get error, falling back to LocalStorage', err);
+      }
+    }
+
+    // LocalStorage Fallback
+    try {
+      const raw = localStorage.getItem(LOCALSTORAGE_PREFIX + id);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public async saveBoard(board: BoardRecord): Promise<void> {
+    if (this.hasIndexedDB) {
+      try {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.put(board);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (err) {
+        console.warn('[BoardStorage] IndexedDB save error, falling back to LocalStorage', err);
+      }
+    }
+
+    // LocalStorage Fallback
+    try {
+      localStorage.setItem(LOCALSTORAGE_PREFIX + board.id, JSON.stringify(board));
+      const idsRaw = localStorage.getItem(LOCALSTORAGE_LIST_KEY);
+      const ids: string[] = idsRaw ? JSON.parse(idsRaw) : [];
+      if (!ids.includes(board.id)) {
+        ids.push(board.id);
+        localStorage.setItem(LOCALSTORAGE_LIST_KEY, JSON.stringify(ids));
+      }
+    } catch (e) {
+      console.error('[BoardStorage] Failed to save board in fallback storage:', e);
+    }
+  }
+
+  public async deleteBoard(id: string): Promise<void> {
+    if (this.hasIndexedDB) {
+      try {
+        const db = await this.getDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.delete(id);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (err) {
+        console.warn('[BoardStorage] IndexedDB delete error, falling back to LocalStorage', err);
+      }
+    }
+
+    // LocalStorage Fallback
+    try {
+      localStorage.removeItem(LOCALSTORAGE_PREFIX + id);
+      const idsRaw = localStorage.getItem(LOCALSTORAGE_LIST_KEY);
+      if (idsRaw) {
+        const ids: string[] = JSON.parse(idsRaw);
+        const filtered = ids.filter((bId) => bId !== id);
+        localStorage.setItem(LOCALSTORAGE_LIST_KEY, JSON.stringify(filtered));
+      }
+    } catch (e) {
+      console.error('[BoardStorage] Failed to delete board in fallback storage:', e);
+    }
+  }
+}
+
+const storage = new BoardStorage();
+
+// ================= Reactive Board Store =================
+class BoardStore {
+  private state: BoardStoreState = {
+    boards: [],
+    activeBoardId: null,
+    currentView: 'gallery',
+    searchQuery: '',
+    isSaving: false,
+    isLoading: true,
+    lastSavedAt: null,
+  };
+
+  private listeners = new Set<() => void>();
+  private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private isInitialized = false;
+
+  constructor() {
+    this.setupAutoSaveSubscriptions();
+  }
+
+  public subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  public getSnapshot = (): BoardStoreState => {
+    return this.state;
+  };
+
+  public getState = (): BoardStoreState => {
+    return this.state;
+  };
+
+  private notify() {
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  private setState(partial: Partial<BoardStoreState>) {
+    this.state = { ...this.state, ...partial };
+    this.notify();
+  }
+
+  /**
+   * Initializes multi-board repository on application start.
+   * Seamlessly seeds an initial board if none exists.
+   */
+  public async initialize() {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+    this.setState({ isLoading: true });
+
+    try {
+      const summaries = await storage.getAllSummaries();
+
+      if (summaries.length === 0) {
+        // No boards saved yet — check if there are existing canvas entities to migrate
+        const entities = sceneStore.serializeEntities();
+        if (entities.length > 0) {
+          const newId = this.generateId();
+          const initialTitle = canvasStore.getState().boardTitle || 'Untitled whiteboard';
+          const thumbnail = await ExportEngine.generateThumbnail(entities);
+          const now = new Date().toISOString();
+
+          const initialBoard: BoardRecord = {
+            id: newId,
+            title: initialTitle,
+            thumbnailDataUrl: thumbnail,
+            createdAt: now,
+            updatedAt: now,
+            canvasData: {
+              entities,
+              gridPattern: canvasStore.getState().gridPattern,
+            },
+          };
+
+          await storage.saveBoard(initialBoard);
+          const initialSummary: BoardSummary = {
+            id: newId,
+            title: initialTitle,
+            thumbnailDataUrl: thumbnail,
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          localStorage.setItem(LAST_ACTIVE_KEY, newId);
+          this.setState({
+            boards: [initialSummary],
+            activeBoardId: newId,
+            isLoading: false,
+            currentView: 'gallery',
+          });
+        } else {
+          this.setState({
+            boards: [],
+            activeBoardId: null,
+            isLoading: false,
+            currentView: 'gallery',
+          });
+        }
+      } else {
+        // Boards exist — preload target record in background
+        const lastActiveId = localStorage.getItem(LAST_ACTIVE_KEY);
+        const targetId =
+          lastActiveId && summaries.some((b) => b.id === lastActiveId)
+            ? lastActiveId
+            : summaries[0].id;
+
+        const targetRecord = await storage.getBoard(targetId);
+        if (targetRecord) {
+          sceneStore.loadEntities(targetRecord.canvasData.entities || []);
+          canvasStore.setBoardTitle(targetRecord.title);
+          if (targetRecord.canvasData.gridPattern) {
+            canvasStore.setGridPattern(targetRecord.canvasData.gridPattern);
+          }
+        }
+
+        this.setState({
+          boards: summaries,
+          activeBoardId: targetId,
+          isLoading: false,
+          currentView: 'gallery', // Always start at Whiteboard Picker
+        });
+      }
+    } catch (err) {
+      console.error('[BoardStore] Initialization error:', err);
+      this.setState({ isLoading: false });
+    }
+  }
+
+  /**
+   * Generates a unique board identifier matching Microsoft Whiteboard naming style
+   */
+  private generateId(): string {
+    return `board_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  }
+
+  /**
+   * Sets search filter query for gallery
+   */
+  public setSearchQuery(query: string) {
+    this.setState({ searchQuery: query });
+  }
+
+  /**
+   * Gets filtered list of boards matching current search query
+   */
+  public getFilteredBoards(): BoardSummary[] {
+    const q = this.state.searchQuery.trim().toLowerCase();
+    if (!q) return this.state.boards;
+    return this.state.boards.filter((b) => b.title.toLowerCase().includes(q));
+  }
+
+  /**
+   * Navigates between Gallery ('gallery') and Canvas ('board')
+   */
+  public async navigateTo(view: 'gallery' | 'board') {
+    if (this.state.currentView === 'board' && view === 'gallery') {
+      // Flush save before leaving canvas
+      await this.flushSave();
+    }
+    this.setState({ currentView: view });
+  }
+
+  /**
+   * Creates a new blank whiteboard and transitions immediately to canvas
+   */
+  public async createNewBoard(customTitle?: string): Promise<string> {
+    // Flush current board if any
+    await this.flushSave();
+
+    const newId = this.generateId();
+    const title = customTitle || 'Untitled whiteboard';
+    const now = new Date().toISOString();
+
+    // Reset sceneStore with empty entities
+    sceneStore.loadEntities([]);
+    canvasStore.setBoardTitle(title);
+
+    const emptyThumbnail = await ExportEngine.generateThumbnail([]);
+
+    const newBoard: BoardRecord = {
+      id: newId,
+      title,
+      thumbnailDataUrl: emptyThumbnail,
+      createdAt: now,
+      updatedAt: now,
+      canvasData: {
+        entities: [],
+        gridPattern: canvasStore.getState().gridPattern,
+      },
+    };
+
+    await storage.saveBoard(newBoard);
+    localStorage.setItem(LAST_ACTIVE_KEY, newId);
+
+    const newSummary: BoardSummary = {
+      id: newId,
+      title,
+      thumbnailDataUrl: emptyThumbnail,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.setState({
+      boards: [newSummary, ...this.state.boards],
+      activeBoardId: newId,
+      currentView: 'board',
+    });
+
+    return newId;
+  }
+
+  /**
+   * Imports an external .whiteboard or JSON bundle into the repository and opens it
+   */
+  public async importBoard(title: string, canvasData: any): Promise<string> {
+    await this.flushSave();
+
+    const newId = this.generateId();
+    const entities = canvasData?.entities || [];
+    const thumbnail = await ExportEngine.generateThumbnail(entities);
+    const now = new Date().toISOString();
+    const boardTitle = title || 'Imported Whiteboard';
+
+    const record: BoardRecord = {
+      id: newId,
+      title: boardTitle,
+      thumbnailDataUrl: thumbnail,
+      createdAt: now,
+      updatedAt: now,
+      canvasData: {
+        entities,
+        gridPattern: canvasData?.gridPattern || 'Dot',
+      },
+    };
+
+    await storage.saveBoard(record);
+    localStorage.setItem(LAST_ACTIVE_KEY, newId);
+
+    const summary: BoardSummary = {
+      id: newId,
+      title: boardTitle,
+      thumbnailDataUrl: thumbnail,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    sceneStore.loadEntities(entities);
+    canvasStore.setBoardTitle(boardTitle);
+    if (record.canvasData.gridPattern) {
+      canvasStore.setGridPattern(record.canvasData.gridPattern);
+    }
+
+    this.setState({
+      boards: [summary, ...this.state.boards],
+      activeBoardId: newId,
+      currentView: 'board',
+    });
+
+    return newId;
+  }
+
+  /**
+   * Opens an existing board by ID
+   */
+  public async openBoard(id: string): Promise<void> {
+    if (this.state.activeBoardId === id && this.state.currentView === 'board') {
+      return;
+    }
+
+    // Flush current board save
+    await this.flushSave();
+
+    const record = await storage.getBoard(id);
+    if (!record) {
+      console.error('[BoardStore] Board not found:', id);
+      return;
+    }
+
+    // Load board contents
+    sceneStore.loadEntities(record.canvasData.entities || []);
+    canvasStore.setBoardTitle(record.title);
+    if (record.canvasData.gridPattern) {
+      canvasStore.setGridPattern(record.canvasData.gridPattern);
+    }
+
+    localStorage.setItem(LAST_ACTIVE_KEY, id);
+
+    this.setState({
+      activeBoardId: id,
+      currentView: 'board',
+    });
+  }
+
+  /**
+   * Renames a whiteboard
+   */
+  public async renameBoard(id: string, newTitle: string): Promise<void> {
+    const trimmed = newTitle.trim() || 'Untitled whiteboard';
+    const record = await storage.getBoard(id);
+    if (!record) return;
+
+    record.title = trimmed;
+    record.updatedAt = new Date().toISOString();
+    await storage.saveBoard(record);
+
+    if (id === this.state.activeBoardId) {
+      canvasStore.setBoardTitle(trimmed);
+    }
+
+    const updatedBoards = this.state.boards.map((b) =>
+      b.id === id ? { ...b, title: trimmed, updatedAt: record.updatedAt } : b
+    );
+
+    this.setState({ boards: updatedBoards });
+  }
+
+  /**
+   * Duplicates an existing whiteboard
+   */
+  public async duplicateBoard(id: string): Promise<string> {
+    const original = await storage.getBoard(id);
+    if (!original) throw new Error('Original board not found');
+
+    const newId = this.generateId();
+    const now = new Date().toISOString();
+    const clonedTitle = `${original.title} (Copy)`;
+
+    // Clone all canvas entities with new IDs to prevent collisions
+    const clonedEntities: CanvasEntity[] = (original.canvasData.entities || []).map((ent) => ({
+      ...ent,
+      id: `${ent.id}_copy_${Math.random().toString(36).substring(2, 6)}`,
+    }));
+
+    const clonedThumbnail = await ExportEngine.generateThumbnail(clonedEntities);
+
+    const duplicatedRecord: BoardRecord = {
+      id: newId,
+      title: clonedTitle,
+      thumbnailDataUrl: clonedThumbnail,
+      createdAt: now,
+      updatedAt: now,
+      canvasData: {
+        ...original.canvasData,
+        entities: clonedEntities,
+      },
+    };
+
+    await storage.saveBoard(duplicatedRecord);
+
+    const duplicatedSummary: BoardSummary = {
+      id: newId,
+      title: clonedTitle,
+      thumbnailDataUrl: clonedThumbnail,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.setState({
+      boards: [duplicatedSummary, ...this.state.boards],
+    });
+
+    return newId;
+  }
+
+  /**
+   * Deletes a whiteboard by ID
+   */
+  public async deleteBoard(id: string): Promise<void> {
+    await storage.deleteBoard(id);
+
+    const remaining = this.state.boards.filter((b) => b.id !== id);
+
+    if (this.state.activeBoardId === id) {
+      if (remaining.length > 0) {
+        // Switch to the first available board
+        this.setState({ boards: remaining });
+        await this.openBoard(remaining[0].id);
+      } else {
+        // No boards left — create a fresh new one
+        this.setState({ boards: [], activeBoardId: null });
+        await this.createNewBoard();
+      }
+    } else {
+      this.setState({ boards: remaining });
+    }
+  }
+
+  /**
+   * Immediately saves the currently active board to storage
+   */
+  public async flushSave(): Promise<void> {
+    if (!this.state.activeBoardId) return;
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+
+    const boardId = this.state.activeBoardId;
+    const title = canvasStore.getState().boardTitle || 'Untitled whiteboard';
+    const entities = sceneStore.serializeEntities();
+    const now = new Date().toISOString();
+
+    this.setState({ isSaving: true });
+
+    try {
+      const thumbnail = await ExportEngine.generateThumbnail(entities);
+      const existing = await storage.getBoard(boardId);
+
+      const record: BoardRecord = {
+        id: boardId,
+        title,
+        thumbnailDataUrl: thumbnail,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        canvasData: {
+          entities,
+          gridPattern: canvasStore.getState().gridPattern,
+        },
+      };
+
+      await storage.saveBoard(record);
+
+      const updatedBoards = this.state.boards.map((b) =>
+        b.id === boardId
+          ? { ...b, title, thumbnailDataUrl: thumbnail, updatedAt: now }
+          : b
+      );
+
+      // Re-sort boards so most recently updated is first
+      updatedBoards.sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+
+      this.setState({
+        boards: updatedBoards,
+        isSaving: false,
+        lastSavedAt: Date.now(),
+      });
+    } catch (err) {
+      console.error('[BoardStore] Failed to flush save:', err);
+      this.setState({ isSaving: false });
+    }
+  }
+
+  /**
+   * Schedules debounced auto-save (1200ms) on user inking or entity modification
+   */
+  public scheduleAutoSave() {
+    if (this.state.currentView !== 'board' || !this.state.activeBoardId) return;
+
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+    }
+
+    this.autoSaveTimer = setTimeout(() => {
+      this.flushSave().catch((err) =>
+        console.error('[BoardStore] Auto-save failed:', err)
+      );
+    }, 1200);
+  }
+
+  private setupAutoSaveSubscriptions() {
+    // Listen to changes in sceneStore
+    sceneStore.subscribe(() => {
+      this.scheduleAutoSave();
+    });
+
+    // Listen to title changes in canvasStore
+    canvasStore.subscribe(() => {
+      const activeSummary = this.state.boards.find((b) => b.id === this.state.activeBoardId);
+      if (activeSummary && activeSummary.title !== canvasStore.getState().boardTitle) {
+        this.scheduleAutoSave();
+      }
+    });
+
+    // Save before window unload
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        if (this.state.activeBoardId && this.state.currentView === 'board') {
+          // Synchronous fallback save to localStorage
+          try {
+            const id = this.state.activeBoardId;
+            const entities = sceneStore.serializeEntities();
+            const raw = localStorage.getItem(LOCALSTORAGE_PREFIX + id);
+            const base = raw ? JSON.parse(raw) : { createdAt: new Date().toISOString() };
+            localStorage.setItem(
+              LOCALSTORAGE_PREFIX + id,
+              JSON.stringify({
+                ...base,
+                id,
+                title: canvasStore.getState().boardTitle,
+                updatedAt: new Date().toISOString(),
+                canvasData: { entities, gridPattern: canvasStore.getState().gridPattern },
+              })
+            );
+          } catch {
+            // Best effort
+          }
+        }
+      });
+    }
+  }
+}
+
+export const boardStore = new BoardStore();
+
+export function useBoardStore() {
+  return useSyncExternalStore(boardStore.subscribe, boardStore.getSnapshot);
+}

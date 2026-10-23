@@ -1,0 +1,17 @@
+const fs = require('fs');
+const path = require('path');
+
+const chunkFile = path.resolve('targets/whiteboard-bundles/files/origins/a650871511badba1e97f5f5aed128f690852a70301ed0b10907af73136ba0667/blueboard/chunks/91464.7aeadf3b6ddc55b8cdc3.js');
+const content = fs.readFileSync(chunkFile, 'utf8');
+
+const startPattern = '453072:(';
+const idx = content.indexOf(startPattern);
+const nextMod = content.slice(idx + 10).search(/\d{4,7}:\s*\(/);
+const end = (nextMod !== -1) ? idx + 10 + nextMod : content.length;
+const mod = content.substring(idx, end);
+
+let pos = 0;
+while ((pos = mod.indexOf('Kl', pos)) !== -1) {
+  console.log('Kl match @', pos, ':', mod.substring(Math.max(0, pos - 20), Math.min(mod.length, pos + 100)));
+  pos += 2;
+}
