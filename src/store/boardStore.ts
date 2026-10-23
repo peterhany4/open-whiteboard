@@ -272,50 +272,15 @@ class BoardStore {
       const summaries = await storage.getAllSummaries();
 
       if (summaries.length === 0) {
-        // No boards saved yet — check if there are existing canvas entities to migrate
-        const entities = sceneStore.serializeEntities();
-        if (entities.length > 0) {
-          const newId = this.generateId();
-          const initialTitle = canvasStore.getState().boardTitle || 'Untitled whiteboard';
-          const thumbnail = await ExportEngine.generateThumbnail(entities);
-          const now = new Date().toISOString();
-
-          const initialBoard: BoardRecord = {
-            id: newId,
-            title: initialTitle,
-            thumbnailDataUrl: thumbnail,
-            createdAt: now,
-            updatedAt: now,
-            canvasData: {
-              entities,
-              gridPattern: canvasStore.getState().gridPattern,
-            },
-          };
-
-          await storage.saveBoard(initialBoard);
-          const initialSummary: BoardSummary = {
-            id: newId,
-            title: initialTitle,
-            thumbnailDataUrl: thumbnail,
-            createdAt: now,
-            updatedAt: now,
-          };
-
-          localStorage.setItem(LAST_ACTIVE_KEY, newId);
-          this.setState({
-            boards: [initialSummary],
-            activeBoardId: newId,
-            isLoading: false,
-            currentView: 'gallery',
-          });
-        } else {
-          this.setState({
-            boards: [],
-            activeBoardId: null,
-            isLoading: false,
-            currentView: 'gallery',
-          });
-        }
+        // No boards saved in storage — start cleanly at the board picker
+        sceneStore.loadEntities([]);
+        localStorage.removeItem(LAST_ACTIVE_KEY);
+        this.setState({
+          boards: [],
+          activeBoardId: null,
+          isLoading: false,
+          currentView: 'gallery',
+        });
       } else {
         // Boards exist — preload target record in background
         const lastActiveId = localStorage.getItem(LAST_ACTIVE_KEY);
@@ -589,19 +554,43 @@ class BoardStore {
     await storage.deleteBoard(id);
 
     const remaining = this.state.boards.filter((b) => b.id !== id);
+    const wasActive = this.state.activeBoardId === id;
+    const isGallery = this.state.currentView === 'gallery';
 
-    if (this.state.activeBoardId === id) {
-      if (remaining.length > 0) {
-        // Switch to the first available board
+    if (remaining.length === 0) {
+      // No boards left — clear canvas state and stay in (or return to) board picker gallery
+      sceneStore.loadEntities([]);
+      canvasStore.setBoardTitle('Untitled whiteboard');
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+
+      this.setState({
+        boards: [],
+        activeBoardId: null,
+        currentView: 'gallery',
+      });
+      return;
+    }
+
+    // Remaining boards exist
+    if (isGallery) {
+      // Stay in gallery; if the deleted board was active, point activeBoardId to the first remaining
+      const newActiveId = wasActive ? remaining[0].id : this.state.activeBoardId;
+      if (wasActive && newActiveId) {
+        localStorage.setItem(LAST_ACTIVE_KEY, newActiveId);
+      }
+      this.setState({
+        boards: remaining,
+        activeBoardId: newActiveId,
+        currentView: 'gallery',
+      });
+    } else {
+      // In 'board' view: switch to next available board
+      if (wasActive) {
         this.setState({ boards: remaining });
         await this.openBoard(remaining[0].id);
       } else {
-        // No boards left — create a fresh new one
-        this.setState({ boards: [], activeBoardId: null });
-        await this.createNewBoard();
+        this.setState({ boards: remaining });
       }
-    } else {
-      this.setState({ boards: remaining });
     }
   }
 
