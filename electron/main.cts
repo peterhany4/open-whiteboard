@@ -88,7 +88,7 @@ function createWindow() {
 
   log(`Icon resolved: ${iconPath}`);
   mainWindow = new BrowserWindow({
-    title: 'Microsoft Whiteboard',
+    title: 'Open Whiteboard',
     width: state.width,
     height: state.height,
     x: state.x,
@@ -231,7 +231,7 @@ if (!gotTheLock) {
           title: 'Save Whiteboard File',
           defaultPath: `${safeTitle}.whiteboard`,
           filters: [
-            { name: 'Microsoft Whiteboard Bundle (*.whiteboard)', extensions: ['whiteboard'] },
+            { name: 'Open Whiteboard Bundle (*.whiteboard)', extensions: ['whiteboard'] },
             { name: 'JSON Document (*.json)', extensions: ['json'] },
           ],
         });
@@ -251,7 +251,7 @@ if (!gotTheLock) {
         title: 'Open Whiteboard File',
         filters: [
           {
-            name: 'Microsoft Whiteboard Files (*.whiteboard, *.json)',
+            name: 'Open Whiteboard Files (*.whiteboard, *.json)',
             extensions: ['whiteboard', 'json'],
           },
         ],

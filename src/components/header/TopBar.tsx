@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useCanvasStore, canvasStore } from '../../store/canvasStore';
 import { useTheme } from '../../theme';
 import {
@@ -113,7 +113,7 @@ export const TopBar: React.FC = () => {
     };
     const bundle = {
       version: 1,
-      format: 'Microsoft Whiteboard Bundle',
+      format: 'Open Whiteboard Bundle',
       title: boardTitle || 'Untitled Whiteboard',
       createdAt: new Date().toISOString(),
       canvasData,
@@ -232,7 +232,7 @@ export const TopBar: React.FC = () => {
           }}
         >
           <ChevronLeftIcon size={18} color="var(--wb-text-secondary)" />
-          {/* Microsoft Whiteboard signature tile icon */}
+          {/* Open Whiteboard signature tile icon */}
           <div
             style={{
               width: '26px',
@@ -394,7 +394,7 @@ export const TopBar: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '8px', WebkitAppRegion: 'no-drag' as any }}>
         {/* Copilot Pill Button */}
         <button
-          title="Microsoft Copilot in Whiteboard"
+          title="Copilot in Open Whiteboard"
           style={{
             display: 'flex',
             alignItems: 'center',

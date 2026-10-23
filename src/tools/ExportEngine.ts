@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — High-Resolution Board Export Engine
+﻿/**
+ * Open Whiteboard — High-Resolution Board Export Engine
  *
  * Reverse-Engineered from REA Evidence:
  * - Module 8854 & 770023 -> Union bounding box calculation Su(), zX()

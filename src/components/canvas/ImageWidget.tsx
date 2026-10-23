@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Image & Document Canvas Widget
+﻿/**
+ * Open Whiteboard — Image & Document Canvas Widget
  *
  * Reverse-Engineered from REA Evidence:
  * - Module 93425 (blueboard/chunks/93425.*.js, lines 67-68)

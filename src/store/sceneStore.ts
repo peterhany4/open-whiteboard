@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Spatial Scene Store
+﻿/**
+ * Open Whiteboard — Spatial Scene Store
  *
  * Provides reactive entity storage, viewport culling, and deterministic Undo/Redo integration.
  */

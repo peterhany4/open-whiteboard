@@ -1,9 +1,9 @@
 {
-  "name": "whiteboard-rea",
+  "name": "open-whiteboard",
   "private": true,
   "version": "0.1.0",
-  "description": "Microsoft Whiteboard REA Desktop Application",
-  "author": "Microsoft Whiteboard REA",
+  "description": "Open Whiteboard Desktop & Web Application",
+  "author": "Open Whiteboard",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {

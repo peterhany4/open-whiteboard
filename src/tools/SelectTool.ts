@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Select Tool & Marquee Selection Engine
+﻿/**
+ * Open Whiteboard — Select Tool & Marquee Selection Engine
  *
  * Reverse-Engineered from REA Evidence:
  * - Module 179019 & 40049: toolsDockBaseBar Select Tool cursor & interaction model

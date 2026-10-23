@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Adaptive Background Grid Math & Pattern Specifications
+﻿/**
+ * Open Whiteboard — Adaptive Background Grid Math & Pattern Specifications
  *
  * Reverse-Engineered from REA Evidence:
  * - Evidence ID: ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de

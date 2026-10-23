@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Multi-Board Persistence Engine & Gallery Store
+﻿/**
+ * Open Whiteboard — Multi-Board Persistence Engine & Gallery Store
  *
  * Reverse-Engineered from REA Evidence:
  * - Module 517955 & 179019 (blueboard/chunks/boardpicker.*.js)
@@ -44,7 +44,8 @@ export interface BoardStoreState {
   lastSavedAt: number | null;
 }
 
-const DB_NAME = 'MicrosoftWhiteboardDB';
+const DB_NAME = 'OpenWhiteboardDB';
+const LEGACY_DB_NAME = 'MicrosoftWhiteboardDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'boards';
 const LAST_ACTIVE_KEY = 'whiteboard:lastActiveBoardId';
@@ -77,32 +78,74 @@ class BoardStorage {
     return this.dbPromise;
   }
 
+  private async tryMigrateLegacy(targetDb: IDBDatabase): Promise<BoardRecord[]> {
+    if (!this.hasIndexedDB) return [];
+    return new Promise((resolve) => {
+      try {
+        const req = window.indexedDB.open(LEGACY_DB_NAME);
+        req.onerror = () => resolve([]);
+        req.onsuccess = () => {
+          const legacyDb = req.result;
+          if (!legacyDb.objectStoreNames.contains(STORE_NAME)) {
+            legacyDb.close();
+            return resolve([]);
+          }
+          const tx = legacyDb.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const getReq = store.getAll();
+          getReq.onsuccess = async () => {
+            const records = (getReq.result as BoardRecord[]) || [];
+            legacyDb.close();
+            if (records.length > 0) {
+              const writeTx = targetDb.transaction(STORE_NAME, 'readwrite');
+              const writeStore = writeTx.objectStore(STORE_NAME);
+              for (const rec of records) {
+                writeStore.put(rec);
+              }
+            }
+            resolve(records);
+          };
+          getReq.onerror = () => {
+            legacyDb.close();
+            resolve([]);
+          };
+        };
+      } catch {
+        resolve([]);
+      }
+    });
+  }
+
   public async getAllSummaries(): Promise<BoardSummary[]> {
     if (this.hasIndexedDB) {
       try {
         const db = await this.getDB();
-        return new Promise((resolve, reject) => {
+        let records = await new Promise<BoardRecord[]>((resolve, reject) => {
           const tx = db.transaction(STORE_NAME, 'readonly');
           const store = tx.objectStore(STORE_NAME);
           const req = store.getAll();
-          req.onsuccess = () => {
-            const records = (req.result as BoardRecord[]) || [];
-            // Sort by updatedAt descending
-            records.sort(
-              (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            );
-            resolve(
-              records.map(({ id, title, thumbnailDataUrl, createdAt, updatedAt }) => ({
-                id,
-                title,
-                thumbnailDataUrl,
-                createdAt,
-                updatedAt,
-              }))
-            );
-          };
+          req.onsuccess = () => resolve((req.result as BoardRecord[]) || []);
           req.onerror = () => reject(req.error);
         });
+
+        if (records.length === 0) {
+          // Attempt legacy migration once
+          const migrated = await this.tryMigrateLegacy(db);
+          if (migrated.length > 0) {
+            records = migrated;
+          }
+        }
+
+        records.sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+        return records.map(({ id, title, thumbnailDataUrl, createdAt, updatedAt }) => ({
+          id,
+          title,
+          thumbnailDataUrl,
+          createdAt,
+          updatedAt,
+        }));
       } catch (err) {
         console.warn('[BoardStorage] IndexedDB getAll error, falling back to LocalStorage', err);
       }
@@ -312,7 +355,7 @@ class BoardStore {
   }
 
   /**
-   * Generates a unique board identifier matching Microsoft Whiteboard naming style
+   * Generates a unique board identifier matching Open Whiteboard naming style
    */
   private generateId(): string {
     return `board_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;

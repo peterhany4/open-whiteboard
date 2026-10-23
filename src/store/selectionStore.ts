@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Selection Store
+﻿/**
+ * Open Whiteboard — Selection Store
  *
  * Manages selected entity IDs, selection bounding box, and multi-selection state.
  */

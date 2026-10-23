@@ -1,4 +1,4 @@
-# Microsoft Whiteboard — REA Investigation & Full Recreation Master Plan (`plan.md`)
+# Open Whiteboard — REA Investigation & Full Recreation Master Plan (`plan.md`)
 
 ## 1. Agent Operating Rules (STRICT QUOTA & STATE MACHINE PROTOCOL)
 You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. Your mission is to reverse-engineer and build a pixel-accurate, full-featured local clone of **Microsoft Whiteboard** (including exact UI/UX, original SVG icons, Dark Mode, all inking/canvas tools, and local Image/PDF annotation).

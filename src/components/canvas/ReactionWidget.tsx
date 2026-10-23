@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Reactions & Canvas Stickers Widget
+﻿/**
+ * Open Whiteboard — Reactions & Canvas Stickers Widget
  *
  * Reverse-Engineered from REA Evidence:
  * - Evidence ID: ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de

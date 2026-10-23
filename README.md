@@ -1,11 +1,10 @@
 # OpenWhiteboard 🎨
 
-> A modern, local-first, open-source Microsoft Whiteboard reconstruction engineered with Fluent UI, GPU-accelerated inking, PDF annotation, and native desktop integration.
+> A modern, local-first, open-source collaborative whiteboard engineered with Fluent UI, GPU-accelerated inking, PDF annotation, and native desktop integration.
 
 [![Live Demo](https://img.shields.io/badge/live--demo-open--whiteboard.vercel.app-success.svg)](https://open-whiteboard-pearl.vercel.app/)
 [![Release](https://img.shields.io/badge/release-v0.1.0-0078D4.svg)](https://github.com/peterhany4/open-whiteboard/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Web-blue.svg)](https://github.com/peterhany4/open-whiteboard)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/peterhany4/open-whiteboard)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -50,14 +49,11 @@
 
 ### Pre-Built Binaries (Windows x64)
 Grab the latest release from the [Releases](https://github.com/peterhany4/open-whiteboard/releases) page:
-- **`Microsoft Whiteboard-Setup-0.1.0.exe`**: Standard Windows NSIS Installer (adds desktop & start menu shortcuts).
-- **`Microsoft Whiteboard-Portable-0.1.0.exe`**: Standalone executable (runs immediately without installation).
+- **`Open Whiteboard-Setup-0.1.0.exe`**: Standard Windows NSIS Installer (adds desktop & start menu shortcuts).
+- **`Open Whiteboard-Portable-0.1.0.exe`**: Standalone executable (runs immediately without installation).
 
 ### 🌐 Online Web App (Live Demo)
 Try OpenWhiteboard instantly in your browser: **[open-whiteboard-pearl.vercel.app](https://open-whiteboard-pearl.vercel.app/)**
-
-You can also deploy your own instance with one click:
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/peterhany4/open-whiteboard)
 
 The web app runs entirely client-side using browser **IndexedDB** for local persistence and supports all inking, PDF annotation, shapes, and notes.
 

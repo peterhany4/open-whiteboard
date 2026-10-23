@@ -1,4 +1,4 @@
-// Microsoft Whiteboard Extracted Inline SVG Icons
+﻿// Open Whiteboard Extracted Inline SVG Icons
 // Reverse-engineered from target bundles (91464, 3644, 16494, 45173)
 
 export * from './types';

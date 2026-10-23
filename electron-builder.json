@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.microsoft.whiteboard.rea",
-  "productName": "Microsoft Whiteboard",
+  "appId": "org.openwhiteboard.app",
+  "productName": "Open Whiteboard",
   "directories": {
     "output": "release",
     "buildResources": "build"
@@ -31,7 +31,7 @@
     "allowElevation": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Microsoft Whiteboard",
+    "shortcutName": "Open Whiteboard",
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
     "installerHeader": "build/installerHeader.bmp",

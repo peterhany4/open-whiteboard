@@ -1,5 +1,5 @@
-/**
- * Microsoft Whiteboard — Local PDF Importer & Page Picker Modal
+﻿/**
+ * Open Whiteboard — Local PDF Importer & Page Picker Modal
  *
  * Reverse-Engineered from REA Evidence:
  * - Module 560673 (blueboard/chunks/40049.*.js) -> Documents / PDF insertion workflow

@@ -788,14 +788,14 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
           ...toTransformStyle(camera),
         }}
       >
-        {/* Microsoft Whiteboard Adaptive Vector Grid Background */}
+        {/* Open Whiteboard Adaptive Vector Grid Background */}
         <GridBackground />
 
         <div id="canvasContent" style={{ position: 'relative', width: '100%', height: '100%' }}>
           {/* Spatial Viewport-Culled Canvas Entities */}
           <CanvasEntities entities={visibleEntities} />
 
-          {/* Microsoft Whiteboard Interactive Ruler Overlay */}
+          {/* Open Whiteboard Interactive Ruler Overlay */}
           <RulerWidget />
 
           {/* Fluent Selection Bounding Box & Handles */}
@@ -1025,7 +1025,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         </div>
       </div>
 
-      {/* Microsoft Whiteboard PDF Page Picker Modal */}
+      {/* Open Whiteboard PDF Page Picker Modal */}
       {pdfPickerFile && (
         <PdfPagePickerModal
           file={pdfPickerFile}

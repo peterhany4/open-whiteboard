@@ -102,7 +102,7 @@ export const BoardGalleryHeader: React.FC = () => {
               fontFamily: 'var(--wb-font-family, inherit)',
             }}
           >
-            Microsoft Whiteboard
+            Open Whiteboard
           </span>
         </div>
       </div>
