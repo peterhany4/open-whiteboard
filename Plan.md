@@ -284,11 +284,30 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
     - When drawing over a PDF document, check if the stroke intersects PDF text lines within a proximity tolerance ($\approx 12\text{px}$).
     - If dragging along a line of text, automatically snap the highlighter trajectory to the exact horizontal baseline and height of the printed text line, producing crisp, professional document highlights while keeping freehand drawing in margins and diagrams.
 
+### Milestone 23: PDF Text Selection Visuals & High-Legibility Highlighter Palette
+- [x] **23.1 Fix PDF.js Text Selection Double-Letter Ghosting:**
+  - In `src/index.css`:
+    - Add `-webkit-text-fill-color: transparent !important` to `.textLayer span`, `.textLayer ::selection`, and `.textLayer span::selection`.
+    - Set `caret-color: transparent !important` so dragging selections does not render blinking carats or glyph artifacts.
+    - Tune `.textLayer ::selection` background to authentic Fluent translucent selection blue (`rgba(0, 120, 215, 0.22)`).
+    - This eliminates browser selection text overdraw and prevents letters from appearing twice or misaligned over the underlying high-DPI PDF canvas.
+- [x] **23.2 High-Legibility Edge/Acrobat Pastel Highlighter Palette:**
+  - In `src/components/canvas/PDFDocumentWidget.tsx`:
+    - Replace the harsh, dark, saturated colors (`#00CC6A`, `#FF007F`, `#00BCF2`) with calibrated, high-luminance Edge/Acrobat pastel highlighter tones:
+      - Soft Yellow: `#FFE843`
+      - Soft Mint Green: `#95F09B`
+      - Soft Sky Cyan: `#7AE3FF`
+      - Soft Pastel Pink: `#FF9EC6`
+      - Soft Lavender: `#D4B8FF`
+    - Update floating toolbar color pills to display these authentic pastel swatches with subtle borders (`1px solid rgba(0, 0, 0, 0.12)`).
+  - In `src/canvas/CanvasEntities.tsx`, `src/canvas/CanvasViewport.tsx`, and `src/tools/ExportEngine.ts`:
+    - Calibrate highlighter stroke opacity (`0.38` in light mode, `0.55` in dark mode) so black text maintains maximum contrast and remains 100% crystal-clear and effortlessly readable beneath the highlight.
+
 ---
 
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `22.2 Smart Snap-to-Text when Drawing with Highlighter Tool (Milestone 22 complete)`
-- **Current Active Sub-Task:** `All 22 Planned Milestones Complete! Ready for user review or new feature planning.`
-- **Next Recommended Prompt:** `"Milestone 22 completed successfully. All 22 Milestones are complete! Ready for user review or new feature planning."`
+- **Last Completed Sub-Task:** `23.2 High-Legibility Edge/Acrobat Pastel Highlighter Palette & Opacity Calibration (Milestone 23 complete)`
+- **Current Active Sub-Task:** `Milestone 23 Completed & Verified (All tests pass, clean build)`
+- **Next Recommended Prompt:** `"Ready for next instructions or testing."`

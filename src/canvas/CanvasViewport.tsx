@@ -1120,7 +1120,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
                 strokeWidth={liveHighlighter.width}
                 strokeLinecap="square"
                 strokeLinejoin="bevel"
-                opacity={isDark ? 0.65 : 0.48}
+                opacity={isDark ? 0.55 : 0.38}
                 style={{
                   mixBlendMode: isDark ? 'screen' : 'multiply',
                 }}

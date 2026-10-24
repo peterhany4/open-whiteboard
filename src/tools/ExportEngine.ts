@@ -356,7 +356,7 @@ export class ExportEngine {
         ctx.lineJoin = isHighlighter ? 'bevel' : 'round';
 
         if (isHighlighter) {
-          ctx.globalAlpha = bgMode === 'dark' ? 0.65 : 0.48;
+          ctx.globalAlpha = bgMode === 'dark' ? 0.55 : 0.38;
           ctx.strokeStyle = stroke.color;
         } else if (stroke.effect === 'rainbow') {
           const grad = ctx.createLinearGradient(
@@ -468,7 +468,7 @@ export class ExportEngine {
             : stroke.effect === 'galaxy'
             ? 'url(#wbGalaxyGradient)'
             : stroke.color;
-        const opacity = isHighlighter ? (bgMode === 'dark' ? '0.65' : '0.48') : '1.0';
+        const opacity = isHighlighter ? (bgMode === 'dark' ? '0.55' : '0.38') : '1.0';
 
         svgElements += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="${stroke.width}" stroke-linecap="${isHighlighter ? 'square' : 'round'}" stroke-linejoin="${isHighlighter ? 'bevel' : 'round'}" opacity="${opacity}" />\n`;
 

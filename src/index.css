@@ -73,6 +73,8 @@ html, body, #root {
 .textLayer span,
 .textLayer br {
   color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  caret-color: transparent !important;
   position: absolute;
   white-space: pre;
   cursor: text;
@@ -91,7 +93,9 @@ html, body, #root {
   transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
 }
 
-.textLayer ::selection {
-  background: rgba(0, 120, 215, 0.35) !important;
+.textLayer ::selection,
+.textLayer span::selection {
+  background: rgba(0, 120, 215, 0.22) !important;
   color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
 }

@@ -1081,12 +1081,13 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
             userSelect: 'none',
           }}
         >
-          {/* 4 Quick Highlight Color Pills */}
+          {/* 5 Quick Highlight Edge/Acrobat Pastel Color Pills */}
           {[
-            { name: 'Yellow', color: '#FFF100' },
-            { name: 'Green', color: '#00CC6A' },
-            { name: 'Cyan', color: '#00BCF2' },
-            { name: 'Pink', color: '#FF007F' },
+            { name: 'Yellow', color: '#FFE843' },
+            { name: 'Mint Green', color: '#95F09B' },
+            { name: 'Sky Cyan', color: '#7AE3FF' },
+            { name: 'Pastel Pink', color: '#FF9EC6' },
+            { name: 'Lavender Purple', color: '#D4B8FF' },
           ].map((preset) => (
             <button
               key={preset.name}
@@ -1097,7 +1098,7 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
                 height: '20px',
                 borderRadius: '50%',
                 backgroundColor: preset.color,
-                border: '1.5px solid rgba(0,0,0,0.15)',
+                border: '1px solid rgba(0, 0, 0, 0.12)',
                 cursor: 'pointer',
                 padding: 0,
                 transition: 'transform 0.1s ease',

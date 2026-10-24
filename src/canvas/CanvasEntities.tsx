@@ -38,7 +38,7 @@ const RenderStroke: React.FC<{ stroke: InkStrokeEntity; isDark?: boolean }> = me
         strokeWidth={stroke.width}
         strokeLinecap={isHighlighter ? 'square' : 'round'}
         strokeLinejoin={isHighlighter ? 'bevel' : 'round'}
-        opacity={isHighlighter ? (isDark ? 0.65 : 0.48) : 1.0}
+        opacity={isHighlighter ? (isDark ? 0.55 : 0.38) : 1.0}
         style={{
           mixBlendMode: isHighlighter ? (isDark ? 'screen' : 'multiply') : 'normal',
         }}
