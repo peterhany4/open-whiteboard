@@ -13,15 +13,26 @@ import React, { memo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import type { CanvasEntity, InkStrokeEntity, ReactionEntity, PDFDocumentEntity, InkStrokePoint } from '../../canvas/sceneGraph';
-import { computeEntityBounds, computeStrokeBounds } from '../../canvas/sceneGraph';
+import type {
+  CanvasEntity,
+  InkStrokeEntity,
+  ReactionEntity,
+  PDFDocumentEntity,
+  PDFHighlightAnnotation,
+  PDFHighlightRect,
+} from '../../canvas/sceneGraph';
+import { computeEntityBounds } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
 import { selectionStore, useSelectionStore } from '../../store/selectionStore';
 import { historyManager } from '../../canvas/history';
 import { useInkingStore } from '../../store/inkingStore';
 import { canvasStore } from '../../store/canvasStore';
-import { screenToWorld } from '../../canvas/camera';
 import { pdfTextRegistry, type PDFTextLine } from '../../canvas/pdfTextRegistry';
+import {
+  addPDFHighlight,
+  removePDFHighlight,
+  doesHighlightOverlapRects,
+} from '../../canvas/pdfHighlightCommands';
 import { useTheme } from '../../theme/ThemeProvider';
 import {
   DocumentPDFIcon,
@@ -66,10 +77,11 @@ interface PDFPageItemProps {
   width: number;
   height: number;
   isSelectTool: boolean;
+  highlights?: PDFHighlightAnnotation[];
 }
 
 const PDFPageItem: React.FC<PDFPageItemProps> = memo(
-  ({ pdfDoc, docId, pageOffsetY, pageNumber, totalPages, width, height, isSelectTool }) => {
+  ({ pdfDoc, docId, pageOffsetY, pageNumber, totalPages, width, height, isSelectTool, highlights }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
     const [isRendered, setIsRendered] = useState(false);
@@ -168,6 +180,7 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
 
                 pdfTextRegistry.registerDocPageLines(docId, pageNumber, lines);
               }
+              pdfTextRegistry.registerDocPage(docId, pageNumber, pageOffsetY, width, height);
             } catch (textErr) {
               console.warn(`[PDFDocumentWidget] TextLayer error page ${pageNumber}:`, textErr);
             }
@@ -234,6 +247,53 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
             height: `${height}px`,
           }}
         />
+
+        {/* Structured Page-Relative Highlight Annotations (Acrobat / Edge Standard) */}
+        <svg
+          className="wb-pdf-page-highlights"
+          viewBox={`0 0 ${width} ${height}`}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: `${width}px`,
+            height: `${height}px`,
+            pointerEvents: 'none',
+            zIndex: 1,
+            mixBlendMode: 'multiply',
+          }}
+        >
+          {(highlights || [])
+            .filter((hl) => hl.pageNumber === pageNumber)
+            .map((hl) => (
+              <g key={hl.id} className="wb-pdf-highlight-item" data-highlight-id={hl.id}>
+                {hl.rects &&
+                  hl.rects.map((r, rIdx) => (
+                    <rect
+                      key={`${hl.id}_r_${rIdx}`}
+                      x={r.relX * width}
+                      y={r.relY * height}
+                      width={r.width * width}
+                      height={r.height * height}
+                      fill={hl.color}
+                      rx={2}
+                      ry={2}
+                      opacity={0.42}
+                    />
+                  ))}
+                {hl.freehandD && (
+                  <path
+                    d={hl.freehandD}
+                    stroke={hl.color}
+                    strokeWidth={hl.strokeWidth || 16}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                    opacity={0.42}
+                  />
+                )}
+              </g>
+            ))}
+        </svg>
 
         {/* Transparent PDF.js Text Layer Overlay */}
         <div
@@ -368,10 +428,21 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
+    window.addEventListener('resize', handleSelectionChange);
     window.addEventListener('keydown', handleKeyDown);
+
+    // Keep selection overlay positioned when canvas camera moves/zooms
+    const unsubCanvas = canvasStore.subscribe(() => {
+      if (window.getSelection()?.rangeCount) {
+        handleSelectionChange();
+      }
+    });
+
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
+      window.removeEventListener('resize', handleSelectionChange);
       window.removeEventListener('keydown', handleKeyDown);
+      unsubCanvas();
     };
   }, [isSelectTool]);
 
@@ -380,190 +451,82 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     e.preventDefault();
     if (!textToolbar || textToolbar.rects.length === 0) return;
 
-    const camera = canvasStore.getState().camera;
-    const allEntities = sceneStore.getAllEntities();
-    const highlighters = allEntities.filter(
-      (ent): ent is InkStrokeEntity =>
-        ent.type === 'stroke' && Boolean((ent as any).isHighlighter || ent.tool === 'highlighter')
-    );
+    const container = widgetContainerRef.current;
+    if (!container) return;
 
-    // Convert each screen rect to world line geometry
-    const worldLines = textToolbar.rects.map((rect) => {
+    const pageCards = Array.from(container.querySelectorAll<HTMLElement>('.wb-pdf-page-card'));
+    if (pageCards.length === 0) return;
+
+    // Group textToolbar.rects by matching page card
+    const rectsByPage = new Map<number, { pageNum: number; rects: PDFHighlightRect[] }>();
+
+    for (const rect of textToolbar.rects) {
       const midY = rect.top + rect.height / 2;
-      const startPt = screenToWorld({ x: rect.left, y: midY }, camera);
-      const endPt = screenToWorld({ x: rect.right, y: midY }, camera);
-      const minX = Math.min(startPt.x, endPt.x);
-      const maxX = Math.max(startPt.x, endPt.x);
-      const strokeWidth = Math.max(10, rect.height / camera.scale);
-      return {
-        startPt,
-        endPt,
-        minX,
-        maxX,
-        midY: (startPt.y + endPt.y) / 2,
-        height: strokeWidth,
+      const matchingCard =
+        pageCards.find((card) => {
+          const cRect = card.getBoundingClientRect();
+          return midY >= cRect.top && midY <= cRect.bottom;
+        }) || pageCards[0];
+
+      const pageNum = parseInt(matchingCard.getAttribute('data-page-number') || '1', 10);
+      const cRect = matchingCard.getBoundingClientRect();
+
+      const relRect: PDFHighlightRect = {
+        relX: Math.max(0, Math.min(1, (rect.left - cRect.left) / cRect.width)),
+        relY: Math.max(0, Math.min(1, (rect.top - cRect.top) / cRect.height)),
+        width: Math.max(0.005, Math.min(1, rect.width / cRect.width)),
+        height: Math.max(0.005, Math.min(1, rect.height / cRect.height)),
       };
-    });
 
-    const isColorEqual = (c1: string, c2: string) => c1.trim().toLowerCase() === c2.trim().toLowerCase();
-
-    // Helper: checks if a stroke substantially covers or overlaps a line
-    const doesStrokeOverlapLine = (
-      stroke: InkStrokeEntity,
-      line: { minX: number; maxX: number; midY: number; height: number }
-    ) => {
-      const sBounds = stroke.bounds;
-      const sMidY = (sBounds.minY + sBounds.maxY) / 2;
-      const sHeight = Math.max(8, sBounds.maxY - sBounds.minY);
-
-      // Must be vertically aligned on the same text line
-      const yDist = Math.abs(sMidY - line.midY);
-      const maxAllowedYDist = Math.max(sHeight, line.height) * 0.85;
-      if (yDist > maxAllowedYDist) return false;
-
-      // Must horizontally overlap
-      const overlapX = Math.max(0, Math.min(sBounds.maxX, line.maxX) - Math.max(sBounds.minX, line.minX));
-      const lineWidth = line.maxX - line.minX;
-      const strokeWidth = sBounds.maxX - sBounds.minX;
-      if (lineWidth <= 0 || strokeWidth <= 0) return false;
-
-      return overlapX >= 8 && (overlapX / lineWidth >= 0.35 || overlapX / strokeWidth >= 0.35);
-    };
-
-    // Find all highlighter strokes that overlap any selected line
-    const overlappingStrokes = highlighters.filter((stroke) =>
-      worldLines.some((line) => doesStrokeOverlapLine(stroke, line))
-    );
-
-    // Check if any overlapping stroke has the exact same color
-    const sameColorStrokes = overlappingStrokes.filter((stroke) => isColorEqual(stroke.color, color));
-
-    if (sameColorStrokes.length > 0) {
-      // 1. UNDO / TOGGLE OFF HIGHLIGHT
-      const strokesToRemove: string[] = [];
-      const replacementStrokes: InkStrokeEntity[] = [];
-
-      for (const stroke of sameColorStrokes) {
-        strokesToRemove.push(stroke.id);
-
-        // If this stroke was a 2-point straight line and user selected only a sub-part of it,
-        // keep the non-selected left/right segments so partial un-highlight works cleanly
-        if (stroke.points.length === 2) {
-          const p1 = stroke.points[0];
-          const p2 = stroke.points[1];
-          const strokeStartX = Math.min(p1.x, p2.x);
-          const strokeEndX = Math.max(p1.x, p2.x);
-          const strokeY = (p1.y + p2.y) / 2;
-
-          const matchingLines = worldLines.filter((line) => doesStrokeOverlapLine(stroke, line));
-          if (matchingLines.length > 0) {
-            const selMinX = Math.min(...matchingLines.map((l) => l.minX));
-            const selMaxX = Math.max(...matchingLines.map((l) => l.maxX));
-
-            // Left remainder (>= 16px)
-            if (selMinX - strokeStartX >= 16) {
-              const leftPts: InkStrokePoint[] = [
-                { x: strokeStartX, y: strokeY, pressure: 0.5 },
-                { x: selMinX, y: strokeY, pressure: 0.5 },
-              ];
-              replacementStrokes.push({
-                ...stroke,
-                id: `hl_pdf_${Date.now()}_l_${Math.random().toString(36).slice(2, 6)}`,
-                points: leftPts,
-                bounds: computeStrokeBounds(leftPts, stroke.width, false),
-                updatedAt: Date.now(),
-              });
-            }
-
-            // Right remainder (>= 16px)
-            if (strokeEndX - selMaxX >= 16) {
-              const rightPts: InkStrokePoint[] = [
-                { x: selMaxX, y: strokeY, pressure: 0.5 },
-                { x: strokeEndX, y: strokeY, pressure: 0.5 },
-              ];
-              replacementStrokes.push({
-                ...stroke,
-                id: `hl_pdf_${Date.now()}_r_${Math.random().toString(36).slice(2, 6)}`,
-                points: rightPts,
-                bounds: computeStrokeBounds(rightPts, stroke.width, false),
-                updatedAt: Date.now(),
-              });
-            }
-          }
-        }
+      let group = rectsByPage.get(pageNum);
+      if (!group) {
+        group = { pageNum, rects: [] };
+        rectsByPage.set(pageNum, group);
       }
-
-      const snapshotOld = sameColorStrokes;
-      historyManager.execute({
-        name: 'Remove PDF Text Highlight',
-        execute: () => {
-          for (const id of strokesToRemove) {
-            sceneStore.removeEntity(id, false);
-          }
-          for (const rep of replacementStrokes) {
-            sceneStore.addEntity(rep, false);
-          }
-        },
-        undo: () => {
-          for (const rep of replacementStrokes) {
-            sceneStore.removeEntity(rep.id, false);
-          }
-          for (const orig of snapshotOld) {
-            sceneStore.addEntity(orig, false);
-          }
-        },
-      });
-
-      window.getSelection()?.removeAllRanges();
-      setTextToolbar(null);
-      return;
+      group.rects.push(relRect);
     }
 
-    // 2. APPLY / CHANGE HIGHLIGHT COLOR
-    // Remove any overlapping strokes of a different color so they don't awkwardly stack
-    const diffColorStrokes = overlappingStrokes.filter((stroke) => !isColorEqual(stroke.color, color));
+    const currentDoc = (sceneStore.getEntity(docEntity.id) as PDFDocumentEntity | undefined) || docEntity;
+    const existingHighlights = currentDoc.highlights || [];
+    const isColorEqual = (c1: string, c2: string) => c1.trim().toLowerCase() === c2.trim().toLowerCase();
 
-    const newStrokes: InkStrokeEntity[] = worldLines.map((line, idx) => {
-      const points: InkStrokePoint[] = [
-        { x: line.startPt.x, y: line.startPt.y, pressure: 0.5 },
-        { x: line.endPt.x, y: line.endPt.y, pressure: 0.5 },
-      ];
-      const bounds = computeStrokeBounds(points, line.height, false);
-      return {
-        id: `hl_pdf_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
-        type: 'stroke',
-        tool: 'highlighter',
-        color,
-        width: line.height,
-        points,
-        isHighlighter: true,
-        zIndex: 150,
-        bounds,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-    });
+    for (const { pageNum, rects } of rectsByPage.values()) {
+      const pageHighlights = existingHighlights.filter((h) => h.pageNumber === pageNum);
+      const overlapping = pageHighlights.filter((h) => doesHighlightOverlapRects(h, rects));
+      const sameColorOverlapping = overlapping.filter((h) => isColorEqual(h.color, color));
 
-    const oldSnapshot = diffColorStrokes;
-    historyManager.execute({
-      name: 'Highlight PDF Text',
-      execute: () => {
-        for (const old of oldSnapshot) {
-          sceneStore.removeEntity(old.id, false);
+      if (sameColorOverlapping.length > 0) {
+        // TOGGLE OFF: Undo / remove highlight
+        for (const h of sameColorOverlapping) {
+          removePDFHighlight(docEntity.id, h.id);
         }
-        for (const s of newStrokes) {
-          sceneStore.addEntity(s, false);
+      } else if (overlapping.length > 0) {
+        // REPLACE COLOR: remove old highlight and add new color
+        for (const oldH of overlapping) {
+          removePDFHighlight(docEntity.id, oldH.id);
         }
-      },
-      undo: () => {
-        for (const s of newStrokes) {
-          sceneStore.removeEntity(s.id, false);
-        }
-        for (const old of oldSnapshot) {
-          sceneStore.addEntity(old, false);
-        }
-      },
-    });
+        const newHighlight: PDFHighlightAnnotation = {
+          id: `hl_pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          pageNumber: pageNum,
+          color,
+          rects,
+          text: textToolbar.text,
+          createdAt: Date.now(),
+        };
+        addPDFHighlight(docEntity.id, newHighlight);
+      } else {
+        // ADD NEW HIGHLIGHT
+        const newHighlight: PDFHighlightAnnotation = {
+          id: `hl_pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          pageNumber: pageNum,
+          color,
+          rects,
+          text: textToolbar.text,
+          createdAt: Date.now(),
+        };
+        addPDFHighlight(docEntity.id, newHighlight);
+      }
+    }
 
     window.getSelection()?.removeAllRanges();
     setTextToolbar(null);
@@ -1192,11 +1155,43 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
               width={docEntity.width}
               height={pageHeights[pageNum] || Math.round(docEntity.width * 1.414)}
               isSelectTool={isSelectTool}
+              highlights={docEntity.highlights}
             />
           ))}
       </div>
 
-      {/* 3. Edge/Acrobat Style Floating Text Selection Mini-Toolbar (Milestone 22) */}
+      {/* 3. Custom Vector Text Selection Overlay (Acrobat / Google Docs Architecture) */}
+      {textToolbar && textToolbar.visible && textToolbar.rects.length > 0 && createPortal(
+        <div
+          id="wb-pdf-selection-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 999,
+          }}
+        >
+          {textToolbar.rects.map((rect, idx) => (
+            <div
+              key={`sel_box_${idx}`}
+              className="wb-pdf-selection-box"
+              style={{
+                position: 'fixed',
+                left: `${rect.left}px`,
+                top: `${rect.top}px`,
+                width: `${rect.width}px`,
+                height: `${rect.height}px`,
+                backgroundColor: 'rgba(0, 120, 215, 0.22)',
+                borderRadius: '2px',
+                pointerEvents: 'none',
+              }}
+            />
+          ))}
+        </div>,
+        document.body
+      )}
+
+      {/* 4. Edge/Acrobat Style Floating Text Selection Mini-Toolbar (Milestone 22) */}
       {textToolbar && textToolbar.visible && createPortal(
         <div
           id="wb-pdf-text-toolbar"
@@ -1224,35 +1219,37 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
           {/* 5 Quick Highlight Edge/Acrobat Pastel Color Pills */}
           {(() => {
             let activeColor: string | null = null;
-            if (textToolbar && textToolbar.rects.length > 0) {
-              const cam = canvasStore.getState().camera;
-              const all = sceneStore.getAllEntities();
-              const hls = all.filter(
-                (ent): ent is InkStrokeEntity =>
-                  ent.type === 'stroke' && Boolean((ent as any).isHighlighter || ent.tool === 'highlighter')
-              );
-              for (const r of textToolbar.rects) {
-                const my = r.top + r.height / 2;
-                const sp = screenToWorld({ x: r.left, y: my }, cam);
-                const ep = screenToWorld({ x: r.right, y: my }, cam);
-                const minX = Math.min(sp.x, ep.x);
-                const maxX = Math.max(sp.x, ep.x);
-                const lineMidY = (sp.y + ep.y) / 2;
-                const h = Math.max(10, r.height / cam.scale);
-                for (const s of hls) {
-                  const sm = (s.bounds.minY + s.bounds.maxY) / 2;
-                  const sh = Math.max(8, s.bounds.maxY - s.bounds.minY);
-                  if (Math.abs(sm - lineMidY) <= Math.max(sh, h) * 0.85) {
-                    const ox = Math.max(0, Math.min(s.bounds.maxX, maxX) - Math.max(s.bounds.minX, minX));
-                    const lw = maxX - minX;
-                    const sw = s.bounds.maxX - s.bounds.minX;
-                    if (ox >= 8 && (ox / lw >= 0.35 || ox / sw >= 0.35)) {
-                      activeColor = s.color.toLowerCase();
-                      break;
-                    }
+            if (textToolbar && textToolbar.rects.length > 0 && widgetContainerRef.current) {
+              const pageCards = Array.from(widgetContainerRef.current.querySelectorAll<HTMLElement>('.wb-pdf-page-card'));
+              const currentDoc = (sceneStore.getEntity(docEntity.id) as PDFDocumentEntity | undefined) || docEntity;
+              const highlights = currentDoc.highlights || [];
+
+              for (const rect of textToolbar.rects) {
+                const midY = rect.top + rect.height / 2;
+                const matchingCard =
+                  pageCards.find((card) => {
+                    const cRect = card.getBoundingClientRect();
+                    return midY >= cRect.top && midY <= cRect.bottom;
+                  }) || pageCards[0];
+
+                if (matchingCard) {
+                  const pageNum = parseInt(matchingCard.getAttribute('data-page-number') || '1', 10);
+                  const cRect = matchingCard.getBoundingClientRect();
+                  const relRect: PDFHighlightRect = {
+                    relX: Math.max(0, Math.min(1, (rect.left - cRect.left) / cRect.width)),
+                    relY: Math.max(0, Math.min(1, (rect.top - cRect.top) / cRect.height)),
+                    width: Math.max(0.005, Math.min(1, rect.width / cRect.width)),
+                    height: Math.max(0.005, Math.min(1, rect.height / cRect.height)),
+                  };
+
+                  const matchingHl = highlights.find(
+                    (h) => h.pageNumber === pageNum && doesHighlightOverlapRects(h, [relRect])
+                  );
+                  if (matchingHl) {
+                    activeColor = matchingHl.color.toLowerCase();
+                    break;
                   }
                 }
-                if (activeColor) break;
               }
             }
 

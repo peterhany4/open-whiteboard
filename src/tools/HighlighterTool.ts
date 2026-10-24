@@ -25,7 +25,8 @@ import { inkingStore } from '../store/inkingStore';
 import { penTool } from './PenTool';
 import { rulerEngine } from './RulerEngine';
 import { pdfTextRegistry, type PDFTextLine } from '../canvas/pdfTextRegistry';
-import type { PDFDocumentEntity } from '../canvas/sceneGraph';
+import type { PDFDocumentEntity, PDFHighlightAnnotation } from '../canvas/sceneGraph';
+import { addPDFHighlight } from '../canvas/pdfHighlightCommands';
 
 export interface LiveHighlighterState {
   id: string;
@@ -201,12 +202,79 @@ export class HighlighterToolEngine {
     const activeInking = inkingStore.getState();
     const config = activeInking.highlighter;
     const finalPoints = [...this.filteredPoints];
-    const strokeWidth = this.activeSnappedLine
-      ? Math.max(config.thickness, this.activeSnappedLine.relHeight)
+    const snappedLine = this.activeSnappedLine;
+    const strokeWidth = snappedLine
+      ? Math.max(config.thickness, snappedLine.relHeight)
       : config.thickness;
     this.activeSnappedLine = null;
 
     const bounds: AABB = computeStrokeBounds(finalPoints, strokeWidth, false);
+
+    // Support freehand highlighter drawing over PDF pages by mapping intersecting strokes into page-relative highlight annotations (Sub-Task 25.2)
+    const allPdfs = sceneStore
+      .getAllEntities()
+      .filter((ent): ent is PDFDocumentEntity => ent.type === 'pdf_document');
+
+    let targetPdf: PDFDocumentEntity | null = null;
+    let targetPage: { pageNumber: number; pageOffsetY: number; width: number; height: number } | null = null;
+
+    if (snappedLine) {
+      targetPdf = allPdfs.find((p) => p.id === snappedLine.docId) || null;
+      if (targetPdf) {
+        targetPage = pdfTextRegistry.getDocPage(targetPdf.id, snappedLine.pageNumber) || null;
+      }
+    }
+
+    if (!targetPage && allPdfs.length > 0) {
+      const midPoint = {
+        x: (bounds.minX + bounds.maxX) / 2,
+        y: (bounds.minY + bounds.maxY) / 2,
+      };
+      for (const pdf of allPdfs) {
+        const found = pdfTextRegistry.findPageAtWorldPoint(pdf, midPoint);
+        if (found) {
+          targetPdf = pdf;
+          targetPage = found;
+          break;
+        }
+      }
+    }
+
+    if (targetPdf && targetPage) {
+      const pageWidth = targetPage.width;
+      const pageHeight = targetPage.height;
+      const pageOffsetY = targetPage.pageOffsetY;
+
+      const relX = Math.max(0, Math.min(1, (bounds.minX - targetPdf.x) / pageWidth));
+      const relY = Math.max(0, Math.min(1, (bounds.minY - (targetPdf.y + pageOffsetY)) / pageHeight));
+      const relW = Math.max(0.005, Math.min(1 - relX, (bounds.maxX - bounds.minX) / pageWidth));
+      const relH = Math.max(0.005, Math.min(1 - relY, (bounds.maxY - bounds.minY) / pageHeight));
+
+      const freehandD = finalPoints
+        .map(
+          (p, idx) =>
+            `${idx === 0 ? 'M' : 'L'} ${(p.x - targetPdf!.x).toFixed(1)} ${(p.y - (targetPdf!.y + pageOffsetY)).toFixed(1)}`
+        )
+        .join(' ');
+
+      const annotation: PDFHighlightAnnotation = {
+        id: this.strokeId,
+        pageNumber: targetPage.pageNumber,
+        color: config.color,
+        rects: [{ relX, relY, width: relW, height: relH }],
+        freehandD,
+        strokeWidth,
+        createdAt: Date.now(),
+      };
+
+      addPDFHighlight(targetPdf.id, annotation);
+
+      this.emitLiveStroke(null);
+      this.rawPoints = [];
+      this.filteredPoints = [];
+
+      return null as any;
+    }
 
     const strokeEntity: InkStrokeEntity = {
       id: this.strokeId,

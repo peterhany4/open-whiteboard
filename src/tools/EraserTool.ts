@@ -17,10 +17,12 @@
 
 import type { CameraMatrix, Point } from '../canvas/camera';
 import { screenToWorld } from '../canvas/camera';
-import type { InkStrokeEntity, InkStrokePoint, ShapeEntity } from '../canvas/sceneGraph';
+import type { InkStrokeEntity, InkStrokePoint, ShapeEntity, PDFDocumentEntity } from '../canvas/sceneGraph';
 import { computeStrokeBounds } from '../canvas/sceneGraph';
 import { sceneStore } from '../store/sceneStore';
 import { inkingStore } from '../store/inkingStore';
+import { pdfTextRegistry } from '../canvas/pdfTextRegistry';
+import { removePDFHighlight } from '../canvas/pdfHighlightCommands';
 
 export interface EraserCursorState {
   x: number;
@@ -342,6 +344,34 @@ export class EraserToolEngine {
         const shape = ent as ShapeEntity;
         if (this.isShapeHit(shape, center, eraserRadius)) {
           sceneStore.removeEntity(shape.id, true);
+        }
+      } else if (ent.type === 'pdf_document') {
+        // Erase PDF in-page highlight annotations
+        const pdf = ent as PDFDocumentEntity;
+        if (pdf.highlights && pdf.highlights.length > 0) {
+          const pageInfo = pdfTextRegistry.findPageAtWorldPoint(pdf, center);
+          if (pageInfo) {
+            for (const hl of pdf.highlights) {
+              if (hl.pageNumber === pageInfo.pageNumber && hl.rects) {
+                const hit = hl.rects.some((r) => {
+                  const minX = pdf.x + r.relX * pageInfo.width;
+                  const minY = pdf.y + pageInfo.pageOffsetY + r.relY * pageInfo.height;
+                  const maxX = minX + r.width * pageInfo.width;
+                  const maxY = minY + r.height * pageInfo.height;
+                  return (
+                    center.x >= minX - eraserRadius &&
+                    center.x <= maxX + eraserRadius &&
+                    center.y >= minY - eraserRadius &&
+                    center.y <= maxY + eraserRadius
+                  );
+                });
+                if (hit) {
+                  removePDFHighlight(pdf.id, hl.id);
+                  break;
+                }
+              }
+            }
+          }
         }
       }
     }

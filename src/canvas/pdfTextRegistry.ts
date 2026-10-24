@@ -22,8 +22,17 @@ export interface PDFTextLine {
   relHeight: number; // height in unscaled document units
 }
 
+export interface PDFPageInfo {
+  docId: string;
+  pageNumber: number;
+  pageOffsetY: number;
+  width: number;
+  height: number;
+}
+
 export class PDFTextRegistry {
   private linesByDoc = new Map<string, PDFTextLine[]>();
+  private pagesByDoc = new Map<string, Map<number, PDFPageInfo>>();
 
   public registerDocPageLines(docId: string, pageNumber: number, lines: PDFTextLine[]) {
     const existing = this.linesByDoc.get(docId) || [];
@@ -32,8 +41,50 @@ export class PDFTextRegistry {
     this.linesByDoc.set(docId, filtered);
   }
 
+  public registerDocPage(docId: string, pageNumber: number, pageOffsetY: number, width: number, height: number) {
+    let docPages = this.pagesByDoc.get(docId);
+    if (!docPages) {
+      docPages = new Map();
+      this.pagesByDoc.set(docId, docPages);
+    }
+    docPages.set(pageNumber, { docId, pageNumber, pageOffsetY, width, height });
+  }
+
+  public getDocPage(docId: string, pageNumber: number): PDFPageInfo | undefined {
+    return this.pagesByDoc.get(docId)?.get(pageNumber);
+  }
+
+  public getDocPages(docId: string): PDFPageInfo[] {
+    const docPages = this.pagesByDoc.get(docId);
+    return docPages ? Array.from(docPages.values()) : [];
+  }
+
+  public findPageAtWorldPoint(
+    doc: PDFDocumentEntity,
+    worldPt: Point
+  ): PDFPageInfo | null {
+    const docPages = this.pagesByDoc.get(doc.id);
+    if (!docPages) return null;
+
+    const relX = worldPt.x - doc.x;
+    const relY = worldPt.y - doc.y;
+
+    for (const pageInfo of docPages.values()) {
+      if (
+        relX >= 0 &&
+        relX <= pageInfo.width &&
+        relY >= pageInfo.pageOffsetY &&
+        relY <= pageInfo.pageOffsetY + pageInfo.height
+      ) {
+        return pageInfo;
+      }
+    }
+    return null;
+  }
+
   public unregisterDoc(docId: string) {
     this.linesByDoc.delete(docId);
+    this.pagesByDoc.delete(docId);
   }
 
   public getDocLines(docId: string): PDFTextLine[] {

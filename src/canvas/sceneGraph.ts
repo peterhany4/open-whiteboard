@@ -142,6 +142,24 @@ export interface ImageEntity extends BaseEntity {
   fileName?: string;
 }
 
+export interface PDFHighlightRect {
+  relX: number; // 0..1 relative to page width
+  relY: number; // 0..1 relative to page height
+  width: number; // 0..1 relative to page width
+  height: number; // 0..1 relative to page height
+}
+
+export interface PDFHighlightAnnotation {
+  id: string;
+  pageNumber: number;
+  color: string;
+  rects: PDFHighlightRect[];
+  freehandD?: string;
+  strokeWidth?: number;
+  text?: string;
+  createdAt: number;
+}
+
 export interface PDFDocumentEntity extends BaseEntity {
   type: 'pdf_document';
   x: number;
@@ -154,6 +172,7 @@ export interface PDFDocumentEntity extends BaseEntity {
   currentPage: number;
   totalPages: number;
   isLocked?: boolean;
+  highlights?: PDFHighlightAnnotation[];
 }
 
 export type CanvasEntity =

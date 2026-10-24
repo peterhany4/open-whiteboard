@@ -94,8 +94,9 @@ html, body, #root {
 }
 
 .textLayer ::selection,
-.textLayer span::selection {
-  background: rgba(0, 120, 215, 0.22) !important;
+.textLayer span::selection,
+.textLayer br::selection {
+  background: transparent !important;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
 }
