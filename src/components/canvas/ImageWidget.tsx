@@ -10,22 +10,18 @@
  *   -> Selection handles, aspect-ratio scaling, and contextual action bar
  */
 
-import React, { memo, useState } from 'react';
+import React, { memo } from 'react';
 import type { ImageEntity } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
-import { selectionStore, useSelectionStore } from '../../store/selectionStore';
+import { selectionStore } from '../../store/selectionStore';
 import { useInkingStore } from '../../store/inkingStore';
 import { historyManager } from '../../canvas/history';
-import { LockIcon, UnlockIcon } from '../../assets/icons';
 
 interface ImageWidgetProps {
   image: ImageEntity;
 }
 
 export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
-  const { isSelected: checkIsSelected } = useSelectionStore();
-  const isSelected = checkIsSelected(image.id);
-  const [isHovered, setIsHovered] = useState(false);
   const { selectedTool } = useInkingStore();
   const isSelectTool = selectedTool === 'Select';
 
@@ -98,24 +94,14 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
         height: `${image.height}px`,
         zIndex: isLocked ? 50 : (image.zIndex || 100),
         pointerEvents: isSelectTool ? 'auto' : 'none',
-        borderRadius: '6px',
+        borderRadius: '4px',
         userSelect: 'none',
-        boxShadow: isLocked
-          ? '0 1px 3px rgba(0, 0, 0, 0.08)'
-          : isSelected
-          ? 'none'
-          : 'var(--shadow8, 0 4px 12px rgba(0, 0, 0, 0.12))',
-        border: isLocked
-          ? '1px dashed rgba(0, 0, 0, 0.15)'
-          : isSelected
-          ? 'none'
-          : '1px solid rgba(0, 0, 0, 0.06)',
-        backgroundColor: '#FFFFFF',
-        transition: 'box-shadow 0.15s ease',
+        backgroundColor: 'transparent',
+        border: 'none',
+        boxShadow: 'none',
+        overflow: 'hidden',
       }}
       onPointerDown={handlePointerDown}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {
         if (!isSelectTool) return;
         e.preventDefault();
@@ -129,118 +115,15 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'contain',
+          objectFit: 'fill',
           display: 'block',
           userSelect: 'none',
           pointerEvents: 'none',
-          borderRadius: '5px',
+          borderRadius: '4px',
+          backgroundColor: 'transparent',
         }}
         draggable={false}
       />
-
-      {/* Locked to Background indicator badge & quick unlock button */}
-      {isLocked && isSelectTool && (
-        <div
-          id={`wb-image-locked-badge-${image.id}`}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 10px',
-            borderRadius: '20px',
-            backgroundColor: 'rgba(255, 255, 255, 0.94)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.18)',
-            border: '1px solid rgba(0, 0, 0, 0.1)',
-            fontSize: '11px',
-            fontWeight: 600,
-            color: '#323130',
-            pointerEvents: 'auto',
-            cursor: 'default',
-            opacity: isHovered || isSelected ? 1 : 0.75,
-            transition: 'opacity 0.15s ease',
-            zIndex: 10,
-          }}
-        >
-          <LockIcon size={14} color="#0078D4" />
-          <span>Locked to Background</span>
-          <button
-            id={`wb-image-unlock-btn-${image.id}`}
-            onClick={handleToggleLock}
-            onPointerDown={(e) => e.stopPropagation()}
-            title="Unlock from background to move, resize, or delete"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              marginLeft: '4px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              border: 'none',
-              backgroundColor: '#0078D4',
-              color: '#FFFFFF',
-              fontSize: '11px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'background-color 0.1s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#106EBE')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#0078D4')}
-          >
-            <UnlockIcon size={12} color="#FFFFFF" />
-            <span>Unlock</span>
-          </button>
-        </div>
-      )}
-
-      {/* Unlocked quick "Lock to Background" badge when hovered and not selected */}
-      {!isLocked && isHovered && !isSelected && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            pointerEvents: 'auto',
-          }}
-        >
-          <button
-            onClick={handleToggleLock}
-            title="Lock to Background: Anchor below ink layer and draw effortlessly over this image"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '4px 10px',
-              borderRadius: '20px',
-              backgroundColor: 'rgba(255, 255, 255, 0.92)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.16)',
-              border: '1px solid rgba(0, 0, 0, 0.08)',
-              fontSize: '11px',
-              fontWeight: 600,
-              color: '#323130',
-              cursor: 'pointer',
-              transition: 'all 0.12s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#0078D4';
-              e.currentTarget.style.color = '#FFFFFF';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.92)';
-              e.currentTarget.style.color = '#323130';
-            }}
-          >
-            <LockIcon size={13} />
-            <span>Lock to Background</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 });

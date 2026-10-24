@@ -274,6 +274,15 @@ export const SelectionOverlay: React.FC = () => {
             break;
         }
 
+        // Proportional aspect-ratio preservation for single images on corner resize
+        const isSingleImage = initial.entities.length === 1 && initial.entities[0].type === 'image';
+        const isCorner = handle === 'se' || handle === 'ne' || handle === 'nw' || handle === 'sw';
+        if (isSingleImage && isCorner) {
+          const dominantScale = Math.abs(scaleX - 1) > Math.abs(scaleY - 1) ? scaleX : scaleY;
+          scaleX = dominantScale;
+          scaleY = dominantScale;
+        }
+
         for (const orig of initial.entities) {
           if (orig.isLocked) continue;
 

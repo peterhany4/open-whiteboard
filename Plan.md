@@ -245,11 +245,12 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Implement reactive `toastStore` in `src/store/toastStore.ts` and floating Fluent Acrylic toast component in `src/components/common/Toast.tsx` mounted in `src/App.tsx`.
 
 ### Milestone 20: Locked Object Selection, Visual Feedback & One-Click Unlock
-- [x] **20.1 Fix Locked Pointer Trap & Select Mode Interaction:**
+- [x] **20.1 Fix Locked Pointer Trap & Transparent Image Rendering:**
   - In `src/components/canvas/ImageWidget.tsx`:
     - Fix the CSS pointer-events trap: in inking modes (`Pen`, `Highlighter`, `Laser`, `Eraser`), apply `pointerEvents: 'none'` so drawing over locked photos/diagrams has zero interference.
     - In `Select` mode, keep `pointerEvents: 'auto'` on the widget container so hovering and clicking are always detected.
-    - Render a persistent/hover-responsive acrylic "Locked to Background" pill with a direct "Unlock" button.
+    - Removed intrusive badge overlays ("Locked to Background" / "Lock to Background" message pills) from the image surface; locking and unlocking are controlled cleanly via the top selection context bar (`#wb-context-lock`) and right-click context menu.
+    - Eliminated white background and letterbox bars on image resize by setting `backgroundColor: 'transparent'` and `objectFit: 'fill'`, and adding proportional aspect ratio preservation on corner handle resize in `SelectionOverlay.tsx`.
 - [x] **20.2 Selection Tool & Overlay Locked State Integration:**
   - In `src/tools/SelectTool.ts`:
     - Allow clicking locked entities in `Select` mode to select them in a designated locked state (`selectionStore.select(entity.id)`).
