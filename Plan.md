@@ -272,14 +272,14 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
     - Ensure dynamic text auto-wrapping and height expansion so multi-line text expands smoothly as the user types.
 
 ### Milestone 22: Smart PDF Text Highlighting (Snap-to-Text & Quick Highlight Toolbar)
-- [ ] **22.1 PDF Text Layer Selection Toolbar (Edge/Acrobat Style):**
+- [x] **22.1 PDF Text Layer Selection Toolbar (Edge/Acrobat Style):**
   - In `src/components/canvas/PDFDocumentWidget.tsx`:
     - When the user selects text across PDF pages in `Select` mode, calculate the screen bounding box of the selection and display a floating Fluent mini-toolbar.
     - Include:
       - Quick Highlight color pills (Fluorescent Yellow, Green, Cyan, Pink).
       - "Copy Text" button (`Ctrl+C`).
     - Clicking a highlight color automatically generates a straight, aligned `InkStrokeEntity` or highlight segment matching the exact line bounds of the selected words.
-- [ ] **22.2 Smart Snap-to-Text when Drawing with Highlighter Tool:**
+- [x] **22.2 Smart Snap-to-Text when Drawing with Highlighter Tool:**
   - In `src/tools/HighlighterTool.ts`:
     - When drawing over a PDF document, check if the stroke intersects PDF text lines within a proximity tolerance ($\approx 12\text{px}$).
     - If dragging along a line of text, automatically snap the highlighter trajectory to the exact horizontal baseline and height of the printed text line, producing crisp, professional document highlights while keeping freehand drawing in margins and diagrams.
@@ -289,6 +289,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `21.2 Natural Click-to-Edit, Escape Commit & Textarea Lifecycle (Milestone 21 complete)`
-- **Current Active Sub-Task:** `Ready for Milestone 22 (Smart PDF Text Highlighting)`
-- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 22 (Smart PDF Text Highlighting) sequentially."`
+- **Last Completed Sub-Task:** `22.2 Smart Snap-to-Text when Drawing with Highlighter Tool (Milestone 22 complete)`
+- **Current Active Sub-Task:** `All 22 Planned Milestones Complete! Ready for user review or new feature planning.`
+- **Next Recommended Prompt:** `"Milestone 22 completed successfully. All 22 Milestones are complete! Ready for user review or new feature planning."`

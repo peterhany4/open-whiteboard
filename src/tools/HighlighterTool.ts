@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Chisel-Tip Highlighter Tool Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -24,6 +24,8 @@ import { sceneStore } from '../store/sceneStore';
 import { inkingStore } from '../store/inkingStore';
 import { penTool } from './PenTool';
 import { rulerEngine } from './RulerEngine';
+import { pdfTextRegistry, type PDFTextLine } from '../canvas/pdfTextRegistry';
+import type { PDFDocumentEntity } from '../canvas/sceneGraph';
 
 export interface LiveHighlighterState {
   id: string;
@@ -37,6 +39,7 @@ export class HighlighterToolEngine {
   private isDrawing = false;
   private strokeId = '';
   private activeRulerEdge: 0 | 1 | 2 = 0;
+  private activeSnappedLine: PDFTextLine | null = null;
   private rawPoints: InkStrokePoint[] = [];
   private filteredPoints: InkStrokePoint[] = [];
 
@@ -86,6 +89,19 @@ export class HighlighterToolEngine {
     const snapResult = rulerEngine.snapPoint(worldPt);
     worldPt = snapResult.point;
     this.activeRulerEdge = snapResult.edge;
+    this.activeSnappedLine = null;
+
+    // Smart Snap-to-Text when drawing over PDF documents
+    if (this.activeRulerEdge === 0) {
+      const allPdfs = sceneStore
+        .getAllEntities()
+        .filter((ent): ent is PDFDocumentEntity => ent.type === 'pdf_document');
+      if (allPdfs.length > 0) {
+        const textSnap = pdfTextRegistry.snapPointToText(worldPt, allPdfs, 12);
+        worldPt = textSnap.point;
+        this.activeSnappedLine = textSnap.snappedLine;
+      }
+    }
 
     const startPoint: InkStrokePoint = {
       x: worldPt.x,
@@ -131,6 +147,18 @@ export class HighlighterToolEngine {
         if (snapResult.edge !== 0) {
           this.activeRulerEdge = snapResult.edge;
           worldPt = snapResult.point;
+        } else {
+          // Smart Snap-to-Text when drawing over PDF documents
+          const allPdfs = sceneStore
+            .getAllEntities()
+            .filter((ent): ent is PDFDocumentEntity => ent.type === 'pdf_document');
+          if (allPdfs.length > 0) {
+            const textSnap = pdfTextRegistry.snapPointToText(worldPt, allPdfs, 12);
+            worldPt = textSnap.point;
+            if (textSnap.snappedLine) {
+              this.activeSnappedLine = textSnap.snappedLine;
+            }
+          }
         }
       }
 
@@ -166,20 +194,26 @@ export class HighlighterToolEngine {
 
     if (this.filteredPoints.length === 0) {
       this.emitLiveStroke(null);
+      this.activeSnappedLine = null;
       return null;
     }
 
     const activeInking = inkingStore.getState();
     const config = activeInking.highlighter;
     const finalPoints = [...this.filteredPoints];
-    const bounds: AABB = computeStrokeBounds(finalPoints, config.thickness, false);
+    const strokeWidth = this.activeSnappedLine
+      ? Math.max(config.thickness, this.activeSnappedLine.relHeight)
+      : config.thickness;
+    this.activeSnappedLine = null;
+
+    const bounds: AABB = computeStrokeBounds(finalPoints, strokeWidth, false);
 
     const strokeEntity: InkStrokeEntity = {
       id: this.strokeId,
       type: 'stroke',
       tool: 'highlighter',
       color: config.color,
-      width: config.thickness,
+      width: strokeWidth,
       points: finalPoints,
       isHighlighter: true,
       zIndex: 150, // Highlighters anchor below normal pen ink (zIndex 200)
@@ -200,6 +234,7 @@ export class HighlighterToolEngine {
   public cancel() {
     this.isDrawing = false;
     this.activeRulerEdge = 0;
+    this.activeSnappedLine = null;
     this.emitLiveStroke(null);
     this.rawPoints = [];
     this.filteredPoints = [];

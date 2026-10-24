@@ -10,15 +10,19 @@
  */
 
 import React, { memo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import type { CanvasEntity, InkStrokeEntity, ReactionEntity, PDFDocumentEntity } from '../../canvas/sceneGraph';
-import { computeEntityBounds } from '../../canvas/sceneGraph';
+import type { CanvasEntity, InkStrokeEntity, ReactionEntity, PDFDocumentEntity, InkStrokePoint } from '../../canvas/sceneGraph';
+import { computeEntityBounds, computeStrokeBounds } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
 import { selectionStore, useSelectionStore } from '../../store/selectionStore';
 import { historyManager } from '../../canvas/history';
 import { useInkingStore } from '../../store/inkingStore';
 import { canvasStore } from '../../store/canvasStore';
+import { screenToWorld } from '../../canvas/camera';
+import { pdfTextRegistry, type PDFTextLine } from '../../canvas/pdfTextRegistry';
+import { useTheme } from '../../theme/ThemeProvider';
 import {
   DocumentPDFIcon,
   LockIcon,
@@ -45,8 +49,18 @@ export function dataUrlToUint8Array(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+interface PDFTextSelectionToolbarState {
+  visible: boolean;
+  screenX: number;
+  screenY: number;
+  rects: DOMRect[];
+  text: string;
+}
+
 interface PDFPageItemProps {
   pdfDoc: pdfjsLib.PDFDocumentProxy;
+  docId: string;
+  pageOffsetY: number;
   pageNumber: number;
   totalPages: number;
   width: number;
@@ -55,7 +69,7 @@ interface PDFPageItemProps {
 }
 
 const PDFPageItem: React.FC<PDFPageItemProps> = memo(
-  ({ pdfDoc, pageNumber, totalPages, width, height, isSelectTool }) => {
+  ({ pdfDoc, docId, pageOffsetY, pageNumber, totalPages, width, height, isSelectTool }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
     const [isRendered, setIsRendered] = useState(false);
@@ -120,6 +134,40 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
                 viewport,
               });
               await textLayer.render();
+
+              // Extract and register line bounding boxes for Highlighter snap-to-text
+              const spans = Array.from(textContainer.querySelectorAll('span'));
+              if (spans.length > 0) {
+                const lineGroups: { top: number; spans: HTMLSpanElement[] }[] = [];
+                for (const span of spans) {
+                  const top = span.offsetTop;
+                  const group = lineGroups.find((g) => Math.abs(g.top - top) <= 4);
+                  if (group) {
+                    group.spans.push(span);
+                  } else {
+                    lineGroups.push({ top, spans: [span] });
+                  }
+                }
+
+                const lines: PDFTextLine[] = lineGroups.map((group, idx) => {
+                  const minX = Math.min(...group.spans.map((s) => s.offsetLeft));
+                  const maxX = Math.max(...group.spans.map((s) => s.offsetLeft + s.offsetWidth));
+                  const avgHeight =
+                    group.spans.reduce((acc, s) => acc + s.offsetHeight, 0) / group.spans.length;
+                  const centerY = pageOffsetY + group.top + avgHeight / 2;
+                  return {
+                    id: `${docId}_p${pageNumber}_l${idx}`,
+                    docId,
+                    pageNumber,
+                    relMinX: minX,
+                    relMaxX: maxX,
+                    relCenterY: centerY,
+                    relHeight: Math.max(12, avgHeight),
+                  };
+                });
+
+                pdfTextRegistry.registerDocPageLines(docId, pageNumber, lines);
+              }
             } catch (textErr) {
               console.warn(`[PDFDocumentWidget] TextLayer error page ${pageNumber}:`, textErr);
             }
@@ -141,7 +189,7 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           } catch {}
         }
       };
-    }, [pdfDoc, pageNumber, width]);
+    }, [pdfDoc, pageNumber, width, docId, pageOffsetY]);
 
     return (
       <div
@@ -237,6 +285,7 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
   const isSelected = checkIsSelected(docEntity.id);
   const { selectedTool } = useInkingStore();
   const isSelectTool = selectedTool === 'Select';
+  const { isDark } = useTheme();
 
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [totalPages, setTotalPages] = useState(docEntity.totalPages || 1);
@@ -244,8 +293,151 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
   const [isLoading, setIsLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [isHeaderDragging, setIsHeaderDragging] = useState(false);
+  const [textToolbar, setTextToolbar] = useState<PDFTextSelectionToolbarState | null>(null);
 
+  const widgetContainerRef = useRef<HTMLDivElement>(null);
   const isLocked = Boolean(docEntity.isLocked);
+
+  // Unregister text lines when PDF document widget is removed
+  useEffect(() => {
+    return () => {
+      pdfTextRegistry.unregisterDoc(docEntity.id);
+    };
+  }, [docEntity.id]);
+
+  // Monitor text selection across document text layers in Select mode
+  useEffect(() => {
+    if (!isSelectTool) {
+      setTextToolbar(null);
+      return;
+    }
+
+    const handleSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        setTextToolbar(null);
+        return;
+      }
+
+      const text = sel.toString().trim();
+      if (!text) {
+        setTextToolbar(null);
+        return;
+      }
+
+      const container = widgetContainerRef.current;
+      if (!container) return;
+
+      const anchorNode = sel.anchorNode;
+      const focusNode = sel.focusNode;
+      if (!anchorNode || !focusNode) return;
+      if (!container.contains(anchorNode) || !container.contains(focusNode)) {
+        return;
+      }
+
+      const anchorEl = anchorNode instanceof HTMLElement ? anchorNode : anchorNode.parentElement;
+      if (!anchorEl?.closest('.textLayer')) {
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+      const bRect = range.getBoundingClientRect();
+      if (bRect.width === 0 || bRect.height === 0) return;
+
+      const rawRects = Array.from(range.getClientRects());
+      const lineRects = rawRects.filter((r) => r.width > 2 && r.height > 2);
+      if (lineRects.length === 0) return;
+
+      const screenX = bRect.left + bRect.width / 2;
+      const screenY = bRect.top > 60 ? bRect.top - 46 : bRect.bottom + 10;
+
+      setTextToolbar({
+        visible: true,
+        screenX,
+        screenY,
+        rects: lineRects,
+        text,
+      });
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setTextToolbar(null);
+        window.getSelection()?.removeAllRanges();
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSelectTool]);
+
+  const handleApplyHighlight = (color: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!textToolbar || textToolbar.rects.length === 0) return;
+
+    const camera = canvasStore.getState().camera;
+    const newStrokes: InkStrokeEntity[] = [];
+
+    textToolbar.rects.forEach((rect, idx) => {
+      const midY = rect.top + rect.height / 2;
+      const startPt = screenToWorld({ x: rect.left, y: midY }, camera);
+      const endPt = screenToWorld({ x: rect.right, y: midY }, camera);
+
+      const strokeWidth = Math.max(10, rect.height / camera.scale);
+      const points: InkStrokePoint[] = [
+        { x: startPt.x, y: startPt.y, pressure: 0.5 },
+        { x: endPt.x, y: endPt.y, pressure: 0.5 },
+      ];
+
+      const bounds = computeStrokeBounds(points, strokeWidth, false);
+      const stroke: InkStrokeEntity = {
+        id: `hl_pdf_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+        type: 'stroke',
+        tool: 'highlighter',
+        color,
+        width: strokeWidth,
+        points,
+        isHighlighter: true,
+        zIndex: 150,
+        bounds,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      newStrokes.push(stroke);
+    });
+
+    historyManager.execute({
+      name: 'Highlight PDF Text',
+      execute: () => {
+        for (const s of newStrokes) {
+          sceneStore.addEntity(s, false);
+        }
+      },
+      undo: () => {
+        for (const s of newStrokes) {
+          sceneStore.removeEntity(s.id, false);
+        }
+      },
+    });
+
+    window.getSelection()?.removeAllRanges();
+    setTextToolbar(null);
+  };
+
+  const handleCopyText = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (textToolbar?.text) {
+      navigator.clipboard.writeText(textToolbar.text);
+    }
+    window.getSelection()?.removeAllRanges();
+    setTextToolbar(null);
+  };
 
   // Header dragging refs
   const dragStartRef = useRef<{
@@ -646,8 +838,16 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     selectionStore.deselect(docEntity.id);
   };
 
+  let accumulatedOffsetY = 46;
+  const pageOffsets: { [pageNum: number]: number } = {};
+  for (let p = 1; p <= totalPages; p++) {
+    pageOffsets[p] = accumulatedOffsetY;
+    accumulatedOffsetY += (pageHeights[p] || Math.round(docEntity.width * 1.414)) + 16;
+  }
+
   return (
     <div
+      ref={widgetContainerRef}
       id={`pdf-${docEntity.id}`}
       style={{
         position: 'absolute',
@@ -845,6 +1045,8 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
             <PDFPageItem
               key={pageNum}
               pdfDoc={pdfDoc}
+              docId={docEntity.id}
+              pageOffsetY={pageOffsets[pageNum] || 46}
               pageNumber={pageNum}
               totalPages={totalPages}
               width={docEntity.width}
@@ -853,6 +1055,95 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
             />
           ))}
       </div>
+
+      {/* 3. Edge/Acrobat Style Floating Text Selection Mini-Toolbar (Milestone 22) */}
+      {textToolbar && textToolbar.visible && createPortal(
+        <div
+          id="wb-pdf-text-toolbar"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: `${textToolbar.screenX}px`,
+            top: `${textToolbar.screenY}px`,
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 8px',
+            borderRadius: '8px',
+            backgroundColor: isDark ? 'rgba(38, 38, 38, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.16)' : '1px solid rgba(0, 0, 0, 0.12)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+            zIndex: 1000,
+            userSelect: 'none',
+          }}
+        >
+          {/* 4 Quick Highlight Color Pills */}
+          {[
+            { name: 'Yellow', color: '#FFF100' },
+            { name: 'Green', color: '#00CC6A' },
+            { name: 'Cyan', color: '#00BCF2' },
+            { name: 'Pink', color: '#FF007F' },
+          ].map((preset) => (
+            <button
+              key={preset.name}
+              title={`Highlight ${preset.name}`}
+              onClick={(e) => handleApplyHighlight(preset.color, e)}
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                backgroundColor: preset.color,
+                border: '1.5px solid rgba(0,0,0,0.15)',
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'transform 0.1s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.15)')}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
+            />
+          ))}
+
+          {/* Vertical Divider */}
+          <div
+            style={{
+              width: '1px',
+              height: '18px',
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.12)',
+              margin: '0 2px',
+            }}
+          />
+
+          {/* Copy Text Button */}
+          <button
+            onClick={handleCopyText}
+            title="Copy Text (Ctrl+C)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: isDark ? '#FFFFFF' : '#242424',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 500,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H4zm0 1h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm8 2v7a2 2 0 0 1-2 2H6v-1h4a1 1 0 0 0 1-1V5h1z" />
+            </svg>
+            Copy
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 });
