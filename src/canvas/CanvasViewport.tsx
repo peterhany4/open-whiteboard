@@ -167,11 +167,19 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
           cMapPacked: true,
         });
         const pdfDoc = await loadingTask.promise;
-        const page1 = await pdfDoc.getPage(1);
-        const vp = page1.getViewport({ scale: 1.0 });
-
         const targetWidth = 600;
-        const targetHeight = Math.round((vp.height / vp.width) * targetWidth) + 36;
+        const pageGap = 16;
+        const headerHeight = 46;
+        let totalPagesHeight = 0;
+        for (let p = 1; p <= pdfDoc.numPages; p++) {
+          const page = await pdfDoc.getPage(p);
+          const vp = page.getViewport({ scale: 1.0 });
+          totalPagesHeight += Math.round((vp.height / vp.width) * targetWidth);
+          if (p < pdfDoc.numPages) {
+            totalPagesHeight += pageGap;
+          }
+        }
+        const targetHeight = totalPagesHeight + headerHeight;
 
         const rect = viewportRef.current?.getBoundingClientRect();
         const screenCenter = {
@@ -182,7 +190,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
 
         const timestamp = Date.now();
         const posX = Math.round(insertPt.x - targetWidth / 2);
-        const posY = Math.round(insertPt.y - targetHeight / 2);
+        const posY = Math.round(insertPt.y - Math.min(100, targetHeight / 2));
 
         const docEntity: PDFDocumentEntity = {
           id: `pdf_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
