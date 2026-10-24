@@ -9,15 +9,16 @@
  *   tool-mode isolation, and synchronized inking.
  */
 
-import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import type { PDFDocumentEntity } from '../../canvas/sceneGraph';
+import type { CanvasEntity, InkStrokeEntity, ReactionEntity, PDFDocumentEntity } from '../../canvas/sceneGraph';
 import { computeEntityBounds } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
 import { selectionStore, useSelectionStore } from '../../store/selectionStore';
 import { historyManager } from '../../canvas/history';
 import { useInkingStore } from '../../store/inkingStore';
+import { canvasStore } from '../../store/canvasStore';
 import {
   DocumentPDFIcon,
   LockIcon,
@@ -49,15 +50,14 @@ interface PDFPageItemProps {
   pageNumber: number;
   totalPages: number;
   width: number;
+  height: number;
   isSelectTool: boolean;
-  onHeightMeasured: (pageNumber: number, height: number) => void;
 }
 
 const PDFPageItem: React.FC<PDFPageItemProps> = memo(
-  ({ pdfDoc, pageNumber, totalPages, width, isSelectTool, onHeightMeasured }) => {
+  ({ pdfDoc, pageNumber, totalPages, width, height, isSelectTool }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
-    const [pageHeight, setPageHeight] = useState<number>(Math.round(width * 1.414));
     const [isRendered, setIsRendered] = useState(false);
 
     useEffect(() => {
@@ -72,10 +72,6 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           const unscaledViewport = page.getViewport({ scale: 1.0 });
           const scale = width / unscaledViewport.width;
           const viewport = page.getViewport({ scale });
-          const computedHeight = Math.round(viewport.height);
-
-          setPageHeight(computedHeight);
-          onHeightMeasured(pageNumber, computedHeight);
 
           const canvas = canvasRef.current;
           if (!canvas) return;
@@ -110,6 +106,9 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
             textContainer.innerHTML = '';
             textContainer.style.width = `${viewport.width}px`;
             textContainer.style.height = `${viewport.height}px`;
+            textContainer.style.setProperty('--total-scale-factor', `${scale}`);
+            textContainer.style.setProperty('--min-font-size', '1');
+            textContainer.style.setProperty('--text-scale-factor', `${scale}`);
 
             try {
               const textContent = await page.getTextContent();
@@ -142,15 +141,16 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           } catch {}
         }
       };
-    }, [pdfDoc, pageNumber, width, onHeightMeasured]);
+    }, [pdfDoc, pageNumber, width]);
 
     return (
       <div
         className="wb-pdf-page-card"
+        data-page-number={pageNumber}
         style={{
           position: 'relative',
           width: `${width}px`,
-          height: `${pageHeight}px`,
+          height: `${height}px`,
           backgroundColor: '#FFFFFF',
           borderRadius: '4px',
           boxShadow: '0 3px 12px rgba(0, 0, 0, 0.12)',
@@ -183,7 +183,7 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           style={{
             display: 'block',
             width: `${width}px`,
-            height: `${pageHeight}px`,
+            height: `${height}px`,
           }}
         />
 
@@ -192,7 +192,12 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           ref={textLayerRef}
           className="textLayer"
           style={{
+            position: 'absolute',
+            inset: 0,
+            overflow: 'hidden',
             pointerEvents: isSelectTool ? 'auto' : 'none',
+            userSelect: isSelectTool ? 'text' : 'none',
+            zIndex: 2,
           }}
         />
 
@@ -235,13 +240,23 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
 
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [totalPages, setTotalPages] = useState(docEntity.totalPages || 1);
+  const [pageHeights, setPageHeights] = useState<{ [pageNum: number]: number }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
-  const pageHeightsRef = useRef<{ [pageNum: number]: number }>({});
+  const [isHeaderDragging, setIsHeaderDragging] = useState(false);
 
   const isLocked = Boolean(docEntity.isLocked);
 
-  // Load PDF document proxy once on mount or when pdfData changes
+  // Header dragging refs
+  const dragStartRef = useRef<{
+    clientX: number;
+    clientY: number;
+    docX: number;
+    docY: number;
+    anchored: CanvasEntity[];
+  } | null>(null);
+
+  // Load PDF document proxy and calculate page heights immediately up-front
   useEffect(() => {
     let isCancelled = false;
     setIsLoading(true);
@@ -253,14 +268,55 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     });
 
     loadTask.promise
-      .then((loadedDoc) => {
+      .then(async (loadedDoc) => {
         if (isCancelled) return;
-        setPdfDoc(loadedDoc);
-        setTotalPages(loadedDoc.numPages);
-        if (loadedDoc.numPages !== docEntity.totalPages) {
-          sceneStore.updateEntity(docEntity.id, { totalPages: loadedDoc.numPages }, false);
+
+        const count = loadedDoc.numPages;
+        const heights: { [pageNum: number]: number } = {};
+        const pageWidth = docEntity.width || 600;
+        const pageGap = 16;
+        const headerHeight = 46;
+        let total = headerHeight;
+
+        for (let p = 1; p <= count; p++) {
+          try {
+            const page = await loadedDoc.getPage(p);
+            if (isCancelled) return;
+            const vp = page.getViewport({ scale: 1.0 });
+            const pH = Math.round((vp.height / vp.width) * pageWidth);
+            heights[p] = pH;
+            total += pH;
+            if (p < count) total += pageGap;
+          } catch {
+            const fallbackH = Math.round(pageWidth * 1.414);
+            heights[p] = fallbackH;
+            total += fallbackH;
+            if (p < count) total += pageGap;
+          }
         }
+
+        if (isCancelled) return;
+
+        setPageHeights(heights);
+        setPdfDoc(loadedDoc);
+        setTotalPages(count);
         setIsLoading(false);
+
+        // Synchronize full document bounds and height with sceneStore
+        if (Math.abs(docEntity.height - total) > 4 || docEntity.totalPages !== count) {
+          sceneStore.updateEntity(
+            docEntity.id,
+            {
+              totalPages: count,
+              height: total,
+              bounds: computeEntityBounds({
+                ...docEntity,
+                height: total,
+              }),
+            },
+            false
+          );
+        }
       })
       .catch((err) => {
         if (isCancelled) return;
@@ -274,37 +330,58 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     };
   }, [docEntity.pdfData, docEntity.id]);
 
-  // Synchronize total height to sceneStore when all page heights are measured
-  const handleHeightMeasured = useCallback(
-    (pageNumber: number, height: number) => {
-      pageHeightsRef.current[pageNumber] = height;
+  // Recompute page heights on width change (e.g. toggle standard vs expanded width)
+  useEffect(() => {
+    if (!pdfDoc) return;
+    let isCancelled = false;
 
-      if (!pdfDoc) return;
+    const recompute = async () => {
       const count = pdfDoc.numPages;
-      const measuredKeys = Object.keys(pageHeightsRef.current);
+      const heights: { [pageNum: number]: number } = {};
+      const pageWidth = docEntity.width;
+      const pageGap = 16;
+      let total = 46;
 
-      if (measuredKeys.length >= count) {
-        let total = 46; // header (36px) + margin (10px)
-        for (let p = 1; p <= count; p++) {
-          total += pageHeightsRef.current[p] || height;
-          if (p < count) total += 16; // 16px vertical gap between pages
+      for (let p = 1; p <= count; p++) {
+        try {
+          const page = await pdfDoc.getPage(p);
+          if (isCancelled) return;
+          const vp = page.getViewport({ scale: 1.0 });
+          const pH = Math.round((vp.height / vp.width) * pageWidth);
+          heights[p] = pH;
+          total += pH;
+          if (p < count) total += pageGap;
+        } catch {
+          const fallbackH = Math.round(pageWidth * 1.414);
+          heights[p] = fallbackH;
+          total += fallbackH;
+          if (p < count) total += pageGap;
         }
+      }
 
-        if (Math.abs(docEntity.height - total) > 8) {
-          const updatedEntity: PDFDocumentEntity = {
-            ...docEntity,
+      if (isCancelled) return;
+      setPageHeights(heights);
+
+      if (Math.abs(docEntity.height - total) > 4) {
+        sceneStore.updateEntity(
+          docEntity.id,
+          {
             height: total,
             bounds: computeEntityBounds({
               ...docEntity,
               height: total,
             }),
-          };
-          sceneStore.updateEntity(docEntity.id, { height: total, bounds: updatedEntity.bounds }, false);
-        }
+          },
+          false
+        );
       }
-    },
-    [docEntity, pdfDoc]
-  );
+    };
+
+    recompute();
+    return () => {
+      isCancelled = true;
+    };
+  }, [docEntity.width, pdfDoc, docEntity.id]);
 
   // Toggle Standard (600px) vs Expanded (900px) Width
   const handleToggleFitWidth = (e: React.MouseEvent) => {
@@ -352,13 +429,188 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     });
   };
 
+  // Document Dragging via Fluent Acrylic Header
+  const handleHeaderPointerDown = (e: React.PointerEvent) => {
+    if (isLocked || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setIsHeaderDragging(true);
+
+    if (!isSelected) {
+      selectionStore.select(docEntity.id);
+    }
+
+    // Find overlapping anchored entities (ink strokes, sticky notes)
+    const allScene = sceneStore.getAllEntities();
+    const anchored: CanvasEntity[] = [];
+    for (const item of allScene) {
+      if (item.id === docEntity.id || item.isLocked) continue;
+      const b = item.bounds;
+      const cx = (b.minX + b.maxX) / 2;
+      const cy = (b.minY + b.maxY) / 2;
+      if (
+        cx >= docEntity.x &&
+        cx <= docEntity.x + docEntity.width &&
+        cy >= docEntity.y &&
+        cy <= docEntity.y + docEntity.height
+      ) {
+        anchored.push(JSON.parse(JSON.stringify(item)));
+      }
+    }
+
+    dragStartRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      docX: docEntity.x,
+      docY: docEntity.y,
+      anchored,
+    };
+  };
+
+  const handleHeaderPointerMove = (e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    e.stopPropagation();
+
+    const camera = canvasStore.getState().camera;
+    const dx = (e.clientX - dragStartRef.current.clientX) / camera.scale;
+    const dy = (e.clientY - dragStartRef.current.clientY) / camera.scale;
+
+    const newX = Math.round(dragStartRef.current.docX + dx);
+    const newY = Math.round(dragStartRef.current.docY + dy);
+
+    sceneStore.updateEntity(
+      docEntity.id,
+      {
+        x: newX,
+        y: newY,
+        bounds: computeEntityBounds({
+          ...docEntity,
+          x: newX,
+          y: newY,
+        }),
+      },
+      false
+    );
+
+    for (const orig of dragStartRef.current.anchored) {
+      if (orig.type === 'stroke') {
+        const stroke = orig as InkStrokeEntity;
+        const updatedPoints = stroke.points.map((p) => ({
+          ...p,
+          x: p.x + dx,
+          y: p.y + dy,
+        }));
+        sceneStore.updateEntity(orig.id, { points: updatedPoints }, false);
+      } else if (orig.type === 'reaction') {
+        const rx = orig as ReactionEntity;
+        sceneStore.updateEntity(orig.id, { x: rx.x + dx, y: rx.y + dy }, false);
+      } else {
+        const box = orig as any;
+        sceneStore.updateEntity(orig.id, { x: box.x + dx, y: box.y + dy }, false);
+      }
+    }
+  };
+
+  const handleHeaderPointerUp = (e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    setIsHeaderDragging(false);
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+
+    const camera = canvasStore.getState().camera;
+    const dx = (e.clientX - dragStartRef.current.clientX) / camera.scale;
+    const dy = (e.clientY - dragStartRef.current.clientY) / camera.scale;
+    const finalDocX = Math.round(dragStartRef.current.docX + dx);
+    const finalDocY = Math.round(dragStartRef.current.docY + dy);
+    const prevDocX = dragStartRef.current.docX;
+    const prevDocY = dragStartRef.current.docY;
+    const anchoredSnapshot = [...dragStartRef.current.anchored];
+    dragStartRef.current = null;
+
+    if (Math.hypot(dx, dy) > 2) {
+      historyManager.execute({
+        name: 'Move PDF Document',
+        execute: () => {
+          sceneStore.updateEntity(
+            docEntity.id,
+            {
+              x: finalDocX,
+              y: finalDocY,
+              bounds: computeEntityBounds({
+                ...docEntity,
+                x: finalDocX,
+                y: finalDocY,
+              }),
+            },
+            true
+          );
+          for (const orig of anchoredSnapshot) {
+            if (orig.type === 'stroke') {
+              const stroke = orig as InkStrokeEntity;
+              const updatedPoints = stroke.points.map((p) => ({
+                ...p,
+                x: p.x + dx,
+                y: p.y + dy,
+              }));
+              sceneStore.updateEntity(orig.id, { points: updatedPoints }, true);
+            } else if (orig.type === 'reaction') {
+              const rx = orig as ReactionEntity;
+              sceneStore.updateEntity(orig.id, { x: rx.x + dx, y: rx.y + dy }, true);
+            } else {
+              const box = orig as any;
+              sceneStore.updateEntity(orig.id, { x: box.x + dx, y: box.y + dy }, true);
+            }
+          }
+        },
+        undo: () => {
+          sceneStore.updateEntity(
+            docEntity.id,
+            {
+              x: prevDocX,
+              y: prevDocY,
+              bounds: computeEntityBounds({
+                ...docEntity,
+                x: prevDocX,
+                y: prevDocY,
+              }),
+            },
+            true
+          );
+          for (const orig of anchoredSnapshot) {
+            if (orig.type === 'stroke') {
+              const stroke = orig as InkStrokeEntity;
+              sceneStore.updateEntity(orig.id, { points: stroke.points }, true);
+            } else if (orig.type === 'reaction') {
+              const rx = orig as ReactionEntity;
+              sceneStore.updateEntity(orig.id, { x: rx.x, y: rx.y }, true);
+            } else {
+              const box = orig as any;
+              sceneStore.updateEntity(orig.id, { x: box.x, y: box.y }, true);
+            }
+          }
+        },
+      });
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isLocked) return;
 
     if (e.button === 0 && isSelectTool) {
-      e.stopPropagation();
+      const isTextClick = Boolean((e.target as HTMLElement).closest('.textLayer'));
       const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
-      selectionStore.select(docEntity.id, isMulti);
+
+      if (!isSelected) {
+        selectionStore.select(docEntity.id, isMulti);
+      }
+
+      if (!isTextClick) {
+        e.stopPropagation();
+      }
     }
   };
 
@@ -422,9 +674,14 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* 1. Modern Fluent Acrylic Document Header */}
+      {/* 1. Modern Fluent Acrylic Document Header (Draggable) */}
       <div
         className="wb-pdf-header"
+        onPointerDown={handleHeaderPointerDown}
+        onPointerMove={handleHeaderPointerMove}
+        onPointerUp={handleHeaderPointerUp}
+        onPointerCancel={handleHeaderPointerUp}
+        title={isLocked ? docEntity.title : 'Drag header to move document'}
         style={{
           height: '36px',
           marginBottom: '10px',
@@ -443,6 +700,7 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
           zIndex: 10,
           pointerEvents: 'auto',
           userSelect: 'none',
+          cursor: isLocked ? 'default' : isHeaderDragging ? 'grabbing' : 'grab',
         }}
       >
         {/* Left: PDF badge & document title */}
@@ -590,8 +848,8 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
               pageNumber={pageNum}
               totalPages={totalPages}
               width={docEntity.width}
+              height={pageHeights[pageNum] || Math.round(docEntity.width * 1.414)}
               isSelectTool={isSelectTool}
-              onHeightMeasured={handleHeightMeasured}
             />
           ))}
       </div>

@@ -529,7 +529,9 @@ export const SelectionOverlay: React.FC = () => {
   const boxW = b ? Math.max(8, b.maxX - b.minX + padding * 2) : 0;
   const boxH = b ? Math.max(8, b.maxY - b.minY + padding * 2) : 0;
 
-  const isAnyLocked = selectionStore.getSelectedEntities().some((e) => e.isLocked);
+  const selectedEntities = selectionStore.getSelectedEntities();
+  const isAnyLocked = selectedEntities.some((e) => e.isLocked);
+  const hasPdfDocument = selectedEntities.some((e) => e.type === 'pdf_document');
 
   return (
     <>
@@ -579,7 +581,7 @@ export const SelectionOverlay: React.FC = () => {
           {/* Selection Box Body (drag to translate) */}
           <div
             id="wb-selection-box"
-            onPointerDown={handleBodyPointerDown}
+            onPointerDown={hasPdfDocument ? undefined : handleBodyPointerDown}
             style={{
               position: 'absolute',
               left: `${boxX}px`,
@@ -589,10 +591,13 @@ export const SelectionOverlay: React.FC = () => {
               border: '1.5px solid #0078D4',
               backgroundColor: isAnyLocked
                 ? 'rgba(128, 128, 128, 0.08)'
+                : hasPdfDocument
+                ? 'transparent'
                 : 'rgba(0, 120, 212, 0.05)',
-              cursor: isAnyLocked ? 'default' : 'move',
+              cursor: isAnyLocked ? 'default' : hasPdfDocument ? 'default' : 'move',
               boxSizing: 'border-box',
               touchAction: 'none',
+              pointerEvents: hasPdfDocument ? 'none' : 'auto',
             }}
           />
 

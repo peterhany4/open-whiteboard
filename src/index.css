@@ -64,6 +64,10 @@ html, body, #root {
   z-index: 2;
   user-select: text;
   -webkit-user-select: text;
+  --min-font-size: 1;
+  --total-scale-factor: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
 }
 
 .textLayer span,
@@ -73,6 +77,18 @@ html, body, #root {
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
 }
 
 .textLayer ::selection {
