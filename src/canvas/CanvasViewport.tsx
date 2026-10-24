@@ -3,6 +3,7 @@ import { useCanvasStore, canvasStore } from '../store/canvasStore';
 import { useVisibleEntities, sceneStore } from '../store/sceneStore';
 import { selectionStore } from '../store/selectionStore';
 import { inkingStore, useInkingStore } from '../store/inkingStore';
+import type { PenSlot } from '../store/inkingStore';
 import { useTheme } from '../theme/ThemeProvider';
 import { penTool } from '../tools/PenTool';
 import type { LiveStrokeState } from '../tools/PenTool';
@@ -45,6 +46,10 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   const [liveMarquee, setLiveMarquee] = useState<LiveMarqueeState | null>(null);
   const [pdfPickerFile, setPdfPickerFile] = useState<File | null>(null);
 
+  // Real-time hover cursor tracking (Milestone 12.2)
+  const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
+  const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
+
   useEffect(() => {
     const unsubPen = penTool.subscribeLiveStroke(setLiveStroke);
     const unsubHighlighter = highlighterTool.subscribeLiveStroke(setLiveHighlighter);
@@ -60,6 +65,13 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       unsubSelect();
     };
   }, []);
+
+  // Clear eraser cursor if activeTool changes away from Eraser
+  useEffect(() => {
+    if (inking.selectedTool !== 'Eraser') {
+      eraserTool.cancel();
+    }
+  }, [inking.selectedTool]);
 
   const [viewportSize, setViewportSize] = useState({
     width: typeof window !== 'undefined' ? window.innerWidth : 1920,
@@ -543,6 +555,13 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       const target = e.target as HTMLElement;
       const rect = viewportRef.current?.getBoundingClientRect();
 
+      if (rect) {
+        setHoverPoint({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
+      }
+
       // In Select mode: hit-test or initiate rectangular marquee drag
       if (activeTool === 'Select') {
         const isInteractive = Boolean(
@@ -595,6 +614,27 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
 
     const rect = viewportRef.current?.getBoundingClientRect();
     const activeTool = inkingStore.getState().selectedTool;
+
+    // Track hover position for real-time dynamic inking cursors (Milestone 12.2)
+    if (rect) {
+      const target = e.target as HTMLElement;
+      const isOverFloatingUI = Boolean(
+        target.closest &&
+          target.closest(
+            '#whiteboard-ink-toolbar, .wb-topbar, #topbar, .wb-acrylic-topbar, .wb-pdf-header, .wb-modal-overlay, #create-panel-menu, #wb-create-flyout, #wb-selection-context-menu, [id^="wb-context-"], .wb-selection-action-btn, .wb-color-picker-popover, #wb-selection-container button, [id^="wb-note-"] textarea, [id^="wb-text-"] textarea'
+          )
+      );
+
+      if (isOverFloatingUI) {
+        setIsHoveringCanvas(false);
+      } else {
+        setHoverPoint({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
+        setIsHoveringCanvas(true);
+      }
+    }
 
     if (activeTool === 'Select') {
       selectTool.onPointerMove(e, camera, rect);
@@ -690,6 +730,8 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerLeave = () => {
+    setIsHoveringCanvas(false);
+    setHoverPoint(null);
     eraserTool.onPointerLeave();
   };
 
@@ -745,20 +787,40 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
     }
   };
 
-  // Determine dynamic cursor
+  // Determine dynamic cursor (Milestone 12.2)
   const activeTool = inking.selectedTool;
   const isPenActive = activeTool.startsWith('Pen');
+  const isInkingTool =
+    isPenActive ||
+    activeTool === 'Highlighter' ||
+    activeTool === 'Laser' ||
+    activeTool === 'Eraser';
+
   const cursorStyle = isPanning
     ? 'grabbing'
     : isSpacePressed || activeTool === 'Hand'
     ? 'grab'
     : activeTool === 'Select'
     ? 'default'
-    : isPenActive || activeTool === 'Highlighter' || activeTool === 'FreeformLasso'
+    : activeTool === 'FreeformLasso'
     ? 'crosshair'
-    : activeTool === 'Laser' || activeTool === 'Eraser'
+    : isInkingTool && isHoveringCanvas
     ? 'none'
     : 'default';
+
+  // Live inking cursor dimensions & colors (Milestone 12.2)
+  const activeSlot = isPenActive ? (activeTool as PenSlot) : 'Pen1';
+  const currentPen = inking.pens[activeSlot] || inking.pens.Pen1;
+  const penScreenRadius = Math.max(2, (currentPen.thickness * camera.scale) / 2);
+  const penDisplayColor =
+    currentPen.effect === 'rainbow'
+      ? '#FF4E00'
+      : currentPen.effect === 'galaxy'
+      ? '#AE198D'
+      : currentPen.color;
+
+  const hlWidth = Math.max(8, inking.highlighter.thickness * camera.scale);
+  const hlHeight = Math.max(3, inking.highlighter.thickness * 0.35 * camera.scale);
 
   // Drag and drop handlers for local images & PDF documents
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -1113,6 +1175,155 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
           {children}
         </div>
       </div>
+
+      {/* 5. Real-Time Dynamic Inking Cursor Overlay (Milestone 12.2) */}
+      {isInkingTool && isHoveringCanvas && hoverPoint && !isPanning && (
+        <svg
+          id="wb-inking-cursor-overlay"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            overflow: 'visible',
+            pointerEvents: 'none',
+            zIndex: 650,
+          }}
+        >
+          {/* Laser Glow Filter Definition */}
+          <defs>
+            <filter id="laserHoverGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3.5" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* A. Live Pen Cursor (Pen 1 to Pen 5) */}
+          {isPenActive && (
+            <g id="livePenCursor">
+              {/* Outer Subtle High-Contrast Ring */}
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={penScreenRadius + 0.6}
+                fill="none"
+                stroke={isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.35)'}
+                strokeWidth={0.6}
+              />
+              {/* Concentric Inking Stroke Width Ring */}
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={penScreenRadius}
+                fill="none"
+                stroke={penDisplayColor}
+                strokeWidth={1.2}
+              />
+              {/* Precision Center Dot */}
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={1.2}
+                fill={penDisplayColor}
+              />
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={1.7}
+                fill="none"
+                stroke={isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.8)'}
+                strokeWidth={0.5}
+              />
+            </g>
+          )}
+
+          {/* B. Live Highlighter Chisel Nib Cursor */}
+          {activeTool === 'Highlighter' && (
+            <g
+              id="liveHighlighterCursor"
+              transform={`translate(${hoverPoint.x}, ${hoverPoint.y}) rotate(-45)`}
+            >
+              {/* Semi-transparent angled rectangular chisel nib preview */}
+              <rect
+                x={-hlWidth / 2}
+                y={-hlHeight / 2}
+                width={hlWidth}
+                height={hlHeight}
+                rx={1}
+                fill={inking.highlighter.color}
+                opacity={0.55}
+                stroke={inking.highlighter.color}
+                strokeWidth={1.2}
+              />
+              {/* Subtle High-Contrast Border */}
+              <rect
+                x={-hlWidth / 2 - 0.5}
+                y={-hlHeight / 2 - 0.5}
+                width={hlWidth + 1}
+                height={hlHeight + 1}
+                rx={1.5}
+                fill="none"
+                stroke={isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.25)'}
+                strokeWidth={0.6}
+              />
+              {/* Precision Center Guide Dot */}
+              <circle
+                cx={0}
+                cy={0}
+                r={1.2}
+                fill={isDark ? '#FFFFFF' : '#1F1F1F'}
+                opacity={0.8}
+              />
+            </g>
+          )}
+
+          {/* C. Live Laser Hover Cursor (Pulsating Focal Bead) */}
+          {activeTool === 'Laser' && (
+            <g id="liveLaserCursor">
+              {/* Pulsating Neon Blurred Halo */}
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={12}
+                fill={inking.laser.color}
+                opacity={0.65}
+                filter="url(#laserHoverGlow)"
+              >
+                <animate
+                  attributeName="r"
+                  values="10;14;10"
+                  dur="1.5s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="opacity"
+                  values="0.55;0.75;0.55"
+                  dur="1.5s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+              {/* Inner Bright Neon Core */}
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={5}
+                fill={inking.laser.color}
+                opacity={0.9}
+              />
+              {/* Pure White Concentric Focal Center */}
+              <circle
+                cx={hoverPoint.x}
+                cy={hoverPoint.y}
+                r={2}
+                fill="#FFFFFF"
+              />
+            </g>
+          )}
+        </svg>
+      )}
 
       {/* Open Whiteboard PDF Page Picker Modal */}
       {pdfPickerFile && (

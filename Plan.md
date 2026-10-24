@@ -167,10 +167,10 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Set `pointerEvents: 'none'` on `#wb-selection-box` when a PDF document is selected so the selection box does not shield pointer events from the text layer, enabling seamless text selection across all pages while keeping the acrylic header draggable for moving the document.
 
 ### Milestone 12: Distinct Inking Icons & Tool-Specific Custom Cursors
-- [ ] **12.1 Distinct Chisel Highlighter & Refined Pen SVG Icons:**
+- [x] **12.1 Distinct Chisel Highlighter & Refined Pen SVG Icons:**
   - Replace the generic highlighter icon with an authentic wide-body, chisel-cut fluorescent marker icon (`HighlighterIcon.tsx`).
   - Refine `PenIcon.tsx` with a distinct fine-point technical pen nib to prevent visual confusion between Pen and Highlighter slots.
-- [ ] **12.2 Real-Time Dynamic Inking Cursors:**
+- [x] **12.2 Real-Time Dynamic Inking Cursors:**
   - Implement tool-specific cursors on the canvas:
     - **Pen**: Precision crosshair dot with a live ring matching the active pen's color swatch and thickness.
     - **Highlighter**: Semi-transparent rectangular chisel nib showing true stroke thickness & highlight color.
@@ -241,6 +241,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `11.4 Multi-Page Selection, TextLayer Scale Alignment & Non-Blocking Overlay Fix (Milestone 11 complete)`
-- **Current Active Sub-Task:** `Milestone 11 Complete, Ready for Milestone 12, 13, 15, 17, or 18`
-- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 12 (Distinct Inking Icons & Tool-Specific Custom Cursors) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
+- **Last Completed Sub-Task:** `12.2 Real-Time Dynamic Inking Cursors (Milestone 12 complete)`
+- **Current Active Sub-Task:** `Milestone 12 Complete, Ready for Milestone 13, 15, 17, or 18`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 13 (Laser Pointer Active Tracking Cursor & Trail Glow Physics) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
