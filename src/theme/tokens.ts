@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Theme Tokens & Color Palette
  *
  * Reverse-Engineered from REA Evidence:
@@ -105,25 +105,18 @@ export const darkPalette: FluentPalette = {
   white: '#000000',
 }
 
-// 3. Exact Paper Background Colors (Module 922127: eZ)
+// 3. Exact Paper Background Colors (Directly Mode-Driven)
 export const paperColors: Record<string, string> = {
   white: '#FFFFFF',
-  yellow: '#FEEE9E',
-  blue: '#CCECF7',
-  orange: '#FDE0CF',
-  pink: '#FED6D6',
-  purple: '#E4D1EE',
-  black: '#1F1F1F', // Dark mode default canvas surface
-  gray10: '#F0F0F0',
-  gray15: '#DDDDDD',
-  gray20: '#E1E1E1',
-  green: '#E5F3CC',
+  black: '#1E1E1E', // Dark mode default deep slate canvas surface
 }
 
-// 4. Dot Grid Colors (Module 922127: hm)
+// 4. Dot Grid & Line Colors with High Contrast
 export const gridColors = {
-  default: 'rgba(64, 64, 64, 0.188)', // Light paper grid dot
-  black: 'rgba(255, 255, 255, 0.22)',  // Dark paper grid dot (or rgba(64,64,64,0.376))
+  default: '#D2D0CE', // Light mode base grid lines/dots
+  accent: '#B3B0AD',  // Light mode major lines
+  black: '#3B3A39',   // Dark mode base grid lines/dots
+  blackAccent: '#5D5A58', // Dark mode major lines
 }
 
 // 5. Elevation Shadows Generator (Module 944277)
@@ -183,12 +176,15 @@ export function getThemeCssVariables(mode: ThemeMode) {
   const shadows = isDark ? darkShadows : lightShadows
   const acrylic = isDark ? acrylicTokens.dark : acrylicTokens.light
   const canvasBg = isDark ? paperColors.black : paperColors.white
-  const gridDot = isDark ? gridColors.black : gridColors.default
+  const gridBase = isDark ? gridColors.black : gridColors.default
+  const gridAccent = isDark ? gridColors.blackAccent : gridColors.accent
 
   return {
-    // Canvas Surface
+    // Canvas Surface & High-Contrast Adaptive Grid
     '--wb-canvas-background': canvasBg,
-    '--wb-grid-dot-color': gridDot,
+    '--wb-grid-dot-color': gridBase,
+    '--wb-grid-base-color': gridBase,
+    '--wb-grid-accent-color': gridAccent,
 
     // Fluent UI Core Palette
     '--themePrimary': palette.themePrimary,

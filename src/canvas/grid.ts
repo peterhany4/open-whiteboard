@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Adaptive Background Grid Math & Pattern Specifications
  *
  * Reverse-Engineered from REA Evidence:
@@ -53,6 +53,29 @@ export const GRID_DIMENSIONS: Record<GridPatternType, GridDimension> = {
   Triangular: { width: TRIANGULAR_WIDTH, height: 16 },
   Neutral: { width: 0, height: 0 },
 };
+
+export interface GridThemeColors {
+  background: string;
+  base: string;
+  accent: string;
+}
+
+export const GRID_THEME_COLORS: Record<'Light' | 'Dark', GridThemeColors> = {
+  Light: {
+    background: '#FFFFFF',
+    base: '#D2D0CE',
+    accent: '#B3B0AD',
+  },
+  Dark: {
+    background: '#1E1E1E',
+    base: '#3B3A39',
+    accent: '#5D5A58',
+  },
+};
+
+export function getGridColors(mode: 'Light' | 'Dark'): GridThemeColors {
+  return GRID_THEME_COLORS[mode] || GRID_THEME_COLORS.Light;
+}
 
 export const MOIRE_SUPPRESSION_THRESHOLD = 0.2; // 20% zoom scale
 

@@ -179,10 +179,10 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Maintain smooth 60fps decay tail (`requestAnimationFrame`) with automatic fade-out when pointer stops.
 
 ### Milestone 14: Dynamic Theme Paper Color & High-Contrast Grid Patterns
-- [ ] **14.1 Automatic Mode-Driven Canvas Surface & Palette Cleanup:**
+- [x] **14.1 Automatic Mode-Driven Canvas Surface & Palette Cleanup:**
   - Remove redundant "Canvas Paper Color" palette picker from `TopBar.tsx` Settings menu.
   - Automatically bind canvas surface to active Theme mode: pure crisp White (`#FFFFFF`) in Light Mode, deep slate (`#1E1E1E`) in Dark Mode.
-- [ ] **14.2 Adaptive High-Contrast Grid Math:**
+- [x] **14.2 Adaptive High-Contrast Grid Math:**
   - Update `src/canvas/grid.ts` and `GridBackground.tsx` to ensure all 9 grid patterns (Dot, Cubic, Graph, Rule, Triangular, etc.) have crisp, legible contrast:
     - Light Mode: `#D2D0CE` lines / dots (never washed out).
     - Dark Mode: `#3B3A39` lines / dots (never dim or muddy).
@@ -234,6 +234,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `10.5 Electron Window Caption Buttons (Milestones 0–10 complete)`
-- **Current Active Sub-Task:** `Milestones 11 through 19 Planned & Ready for Execution`
-- **Next Recommended Prompt:** `"Execute Sprint A (Milestones 14, 16, 18, 19: Paper Color/Grids, Shortcuts/Header Cleanup, Board Isolation, and Clear Canvas Fix), verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
+- **Last Completed Sub-Task:** `14.2 Adaptive High-Contrast Grid Math (Milestone 14 complete)`
+- **Current Active Sub-Task:** `Milestone 14 Complete, Ready for Milestone 15 or 16`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 16 (Refined Keyboard Shortcuts Alt+W / Alt+X & TopBar Header Cleanup) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`

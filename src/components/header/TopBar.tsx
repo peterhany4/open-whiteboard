@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useCanvasStore, canvasStore } from '../../store/canvasStore';
 import { useTheme } from '../../theme';
 import {
@@ -6,7 +6,6 @@ import {
   RedoIcon,
   CopilotIcon,
   SettingsIcon,
-  CheckmarkIcon,
   SunIcon,
   MoonIcon,
   ExportIcon,
@@ -15,7 +14,6 @@ import {
   DocumentPDFIcon,
   ImageIcon,
 } from '../../assets/icons';
-import { paperColors } from '../../theme/tokens';
 import type { GridPatternType } from '../../canvas/grid';
 import { ExportEngine } from '../../tools/ExportEngine';
 import { useBoardStore, boardStore } from '../../store/boardStore';
@@ -25,7 +23,7 @@ import { WindowControls } from '../electron/WindowControls';
 export const TopBar: React.FC = () => {
   const { boardTitle, canUndo, canRedo, isSettingsOpen, gridPattern } = useCanvasStore();
   const { isSaving } = useBoardStore();
-  const { mode, toggleTheme, paperColor, setPaperColor } = useTheme();
+  const { mode, toggleTheme } = useTheme();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(boardTitle);
@@ -151,17 +149,6 @@ export const TopBar: React.FC = () => {
       setIsEditingTitle(false);
     }
   };
-
-  const paperPaletteOptions = [
-    { key: 'white', label: 'White', color: paperColors.white },
-    { key: 'yellow', label: 'Soft Yellow', color: paperColors.yellow },
-    { key: 'blue', label: 'Soft Blue', color: paperColors.blue },
-    { key: 'orange', label: 'Soft Orange', color: paperColors.orange },
-    { key: 'pink', label: 'Soft Pink', color: paperColors.pink },
-    { key: 'purple', label: 'Soft Purple', color: paperColors.purple },
-    { key: 'green', label: 'Soft Green', color: paperColors.green },
-    { key: 'black', label: 'Dark Paper', color: paperColors.black },
-  ];
 
   const gridOptions: { key: GridPatternType; label: string }[] = [
     { key: 'Dot', label: 'Dot Grid' },
@@ -737,46 +724,6 @@ export const TopBar: React.FC = () => {
                   {mode === 'Light' ? <MoonIcon size={14} /> : <SunIcon size={14} />}
                   <span>{mode}</span>
                 </button>
-              </div>
-
-              <div style={{ height: '1px', backgroundColor: 'var(--colorNeutralStroke1)' }} />
-
-              <span style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--colorNeutralForeground3)' }}>
-                Canvas Paper Color
-              </span>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-                {paperPaletteOptions.map((opt) => {
-                  const isSelected = paperColor.toLowerCase() === opt.key.toLowerCase();
-                  return (
-                    <button
-                      key={opt.key}
-                      onClick={() => setPaperColor(opt.key)}
-                      title={opt.label}
-                      style={{
-                        width: '42px',
-                        height: '32px',
-                        borderRadius: '6px',
-                        border: isSelected ? '2px solid var(--themePrimary)' : '1px solid var(--colorNeutralStroke1)',
-                        backgroundColor: opt.color,
-                        cursor: 'pointer',
-                        padding: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'transform 0.1s ease',
-                        boxShadow: 'var(--shadow2)',
-                      }}
-                    >
-                      {isSelected && (
-                        <CheckmarkIcon
-                          size={14}
-                          color={opt.key === 'black' ? '#FFFFFF' : '#1F1F1F'}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
               </div>
 
               <div style={{ height: '1px', backgroundColor: 'var(--colorNeutralStroke1)' }} />

@@ -34,42 +34,38 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   defaultMode = 'Light',
 }) => {
   const [mode, setModeState] = useState<ThemeMode>(() => {
+    // Purge legacy custom paper color overrides
+    try {
+      localStorage.removeItem(PAPER_STORAGE_KEY)
+    } catch {
+      // ignore
+    }
     const saved = localStorage.getItem(THEME_STORAGE_KEY)
     if (saved === 'Light' || saved === 'Dark') return saved
     if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'Dark'
     return defaultMode
   })
 
-  const [paperColor, setPaperColorState] = useState<string>(() => {
-    const saved = localStorage.getItem(PAPER_STORAGE_KEY)
-    if (saved) return saved
-    return mode === 'Dark' ? paperColors.black : paperColors.white
-  })
-
   const isDark = mode === 'Dark'
   const palette = isDark ? darkPalette : lightPalette
+  // Canvas surface is strictly mode-driven: pure white in Light, deep slate in Dark
+  const paperColor = isDark ? paperColors.black : paperColors.white
 
   const setThemeMode = (newMode: ThemeMode) => {
     setModeState(newMode)
     localStorage.setItem(THEME_STORAGE_KEY, newMode)
-    // Synchronize default paper color if user hadn't set a custom one
-    if (newMode === 'Dark' && paperColor === paperColors.white) {
-      setPaperColorState(paperColors.black)
-    } else if (newMode === 'Light' && paperColor === paperColors.black) {
-      setPaperColorState(paperColors.white)
-    }
   }
 
   const toggleTheme = () => {
     setThemeMode(mode === 'Light' ? 'Dark' : 'Light')
   }
 
-  const setPaperColor = (colorHex: string) => {
-    setPaperColorState(colorHex)
-    localStorage.setItem(PAPER_STORAGE_KEY, colorHex)
+  // Deprecated manual paper color: kept as backward-compatible stub
+  const setPaperColor = (_colorHex: string) => {
+    // No-op: canvas surface is automatically mode-driven
   }
 
-  // Apply theme class and CSS variables to document.documentElement (Whiteboard pattern)
+  // Apply theme class and CSS variables to document.documentElement
   useLayoutEffect(() => {
     const root = document.documentElement
     root.classList.remove('Light', 'Dark')
@@ -80,13 +76,14 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
       root.style.setProperty(key, value)
     })
 
-    // Override canvas background variable with current paperColor
+    const gridBase = isDark ? gridColors.black : gridColors.default
+    const gridAccent = isDark ? gridColors.blackAccent : gridColors.accent
+
     root.style.setProperty('--wb-canvas-background', paperColor)
-    const isDarkPaper =
-      paperColor.toLowerCase() === paperColors.black.toLowerCase() ||
-      (mode === 'Dark' && paperColor.toLowerCase() === '#1f1f1f')
-    root.style.setProperty('--wb-grid-dot-color', isDarkPaper ? gridColors.black : gridColors.default)
-  }, [mode, paperColor])
+    root.style.setProperty('--wb-grid-base-color', gridBase)
+    root.style.setProperty('--wb-grid-accent-color', gridAccent)
+    root.style.setProperty('--wb-grid-dot-color', gridBase)
+  }, [mode, isDark, paperColor])
 
   // Listen to OS color scheme changes if user hasn't explicitly set a preference
   useEffect(() => {
