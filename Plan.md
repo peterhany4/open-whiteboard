@@ -51,6 +51,9 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Enhance Inked Shapes (Ink-to-Shape)** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/45330.*.js`, `8854.*.js`, `93425.*.js` | Modules 40049, 45330, 8854, 84781932 | Geometric stroke classification (Circle, Ellipse, Rectangle, Square, Triangle, Diamond, Line), Settings toggle, conversion to mathematically straightened beautified InkStrokeEntity (AddBeautifiedInk) directly erasable with Stroke/Point eraser, dual-mode ShapeEntity hit-testing and in-shape text editing |
 | **Board Session Isolation & Reset** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/store/boardStore.ts`, `src/store/inkingStore.ts` | Modules 517955, 795434 | Per-board ruler coordinates and camera matrix persistence, pristine initial state on new board creation (Select tool default, ruler hidden & centered, camera reset) |
 | **Clear Canvas Action & History Integration** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/components/toolbar/EraserPopover.tsx`, `src/canvas/history.ts` | Modules 40049, 804397 | Clear Canvas action directly connected to sceneStore with undoable ClearCanvasCommand in history.ts |
+| **Locked Object Selection & Unlock Action** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `BoardEditorComponent-84781932.*.js` | Modules 93425, 84781932 | Inking mode pointerEvents isolation, Select mode locked entity selection state, one-click Unlock context action |
+| **Sticky Note & Text Direct Inline Editing** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `8854.*.js` | Modules 93425, 8854, 770023 | Selection box interior pointer pass-through, click-to-edit focus lifecycle, textarea auto-expand, Escape blur |
+| **Smart PDF Text Highlighting & Quick Bar** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `65345.*.js` | Modules 93425, 65345 | PDF.js text layer selection coordinates, floating Fluent highlight/copy mini-bar, proximity snap-to-text line highlights |
 
 ---
 
@@ -241,11 +244,50 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Implement dedicated `ClearCanvasCommand` in `src/canvas/history.ts` storing the complete snapshot of cleared entities, ensuring invoking Undo (`Ctrl+Z`, TopBar Undo, or toast Undo button) flawlessly restores all previous canvas entities.
   - Implement reactive `toastStore` in `src/store/toastStore.ts` and floating Fluent Acrylic toast component in `src/components/common/Toast.tsx` mounted in `src/App.tsx`.
 
+### Milestone 20: Locked Object Selection, Visual Feedback & One-Click Unlock
+- [ ] **20.1 Fix Locked Pointer Trap & Select Mode Interaction:**
+  - In `src/components/canvas/ImageWidget.tsx`:
+    - Fix the CSS pointer-events trap: in inking modes (`Pen`, `Highlighter`, `Laser`, `Eraser`), apply `pointerEvents: 'none'` so drawing over locked photos/diagrams has zero interference.
+    - In `Select` mode, keep `pointerEvents: 'auto'` on the widget container so hovering and clicking are always detected.
+    - Render a persistent/hover-responsive acrylic "Locked to Background" pill with a direct "Unlock" button.
+- [ ] **20.2 Selection Tool & Overlay Locked State Integration:**
+  - In `src/tools/SelectTool.ts`:
+    - Allow clicking locked entities in `Select` mode to select them in a designated locked state (`selectionStore.select(entity.id)`).
+  - In `src/components/canvas/SelectionOverlay.tsx`:
+    - When a selected entity is locked:
+      - Hide resize handles and rotation stem.
+      - Render a distinct subtle dashed border (`1.5px dashed rgba(0, 120, 212, 0.6)`).
+      - In the floating context menu pill, highlight the Lock button as active with a prominent **"Unlock from Background"** action that unlocks the entity and returns it to standard movable/resizable state with full Undo/Redo (`Ctrl+Z`).
+
+### Milestone 21: Sticky Note & Text Box Seamless Editing & Pointer Pass-Through
+- [ ] **21.1 Selection Overlay Interior Pointer Pass-Through:**
+  - In `src/components/canvas/SelectionOverlay.tsx`:
+    - When a single text-editable entity (`note`, `text`, or `shape`) is selected, set `pointerEvents: 'none'` on the interior body of `#wb-selection-box` while keeping the outer border and handles interactive (`pointerEvents: 'auto'`).
+    - This allows all clicks, text selections, and typing events inside the note/text box to reach the `<textarea>` unimpeded without losing selection.
+- [ ] **21.2 Natural Click-to-Edit & Textarea Focus Lifecycle:**
+  - In `src/components/canvas/StickyNoteWidget.tsx` and `src/components/canvas/TextBoxWidget.tsx`:
+    - When an already-selected note or text box is clicked, immediately focus into the `<textarea>` and activate editing mode (`isEditing: true`).
+    - Add Escape key listener to exit editing mode cleanly and commit text changes to `sceneStore` with full Undo/Redo history.
+    - Ensure dynamic text auto-wrapping and height expansion so multi-line text expands smoothly as the user types.
+
+### Milestone 22: Smart PDF Text Highlighting (Snap-to-Text & Quick Highlight Toolbar)
+- [ ] **22.1 PDF Text Layer Selection Toolbar (Edge/Acrobat Style):**
+  - In `src/components/canvas/PDFDocumentWidget.tsx`:
+    - When the user selects text across PDF pages in `Select` mode, calculate the screen bounding box of the selection and display a floating Fluent mini-toolbar.
+    - Include:
+      - Quick Highlight color pills (Fluorescent Yellow, Green, Cyan, Pink).
+      - "Copy Text" button (`Ctrl+C`).
+    - Clicking a highlight color automatically generates a straight, aligned `InkStrokeEntity` or highlight segment matching the exact line bounds of the selected words.
+- [ ] **22.2 Smart Snap-to-Text when Drawing with Highlighter Tool:**
+  - In `src/tools/HighlighterTool.ts`:
+    - When drawing over a PDF document, check if the stroke intersects PDF text lines within a proximity tolerance ($\approx 12\text{px}$).
+    - If dragging along a line of text, automatically snap the highlighter trajectory to the exact horizontal baseline and height of the printed text line, producing crisp, professional document highlights while keeping freehand drawing in margins and diagrams.
+
 ---
 
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `Fix: Beautified Inked Shapes & Eraser Integration (Drawn shapes are InkStrokeEntity erasable by pen eraser; ShapeEntity also erasable)`
-- **Current Active Sub-Task:** `All Milestones & Inked Shapes/Eraser Fixes Completed`
-- **Next Recommended Prompt:** `"Review full project status and test desktop application build."`
+- **Last Completed Sub-Task:** `19.2 Undo/Redo Command History Integration & Fluent Toast Banner (Milestone 19 complete)`
+- **Current Active Sub-Task:** `User Reviewing Milestones 20, 21, and 22 in Plan.md`
+- **Next Recommended Prompt:** `"Execute Milestone 20 (Locked Object Selection, Visual Feedback & One-Click Unlock)"`
