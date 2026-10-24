@@ -18,7 +18,7 @@ import { useCanvasStore } from '../../store/canvasStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { lassoTool } from '../../tools/LassoTool';
 import type { LiveLassoState } from '../../tools/LassoTool';
-import { DeleteIcon } from '../../assets/icons';
+import { DeleteIcon, LockIcon, UnlockIcon } from '../../assets/icons';
 
 // 15 Standard Fluent Inking / Object Swatches (Module 434554)
 const FLUENT_PALETTE = [
@@ -530,7 +530,9 @@ export const SelectionOverlay: React.FC = () => {
   const boxH = b ? Math.max(8, b.maxY - b.minY + padding * 2) : 0;
 
   const selectedEntities = selectionStore.getSelectedEntities();
-  const isAnyLocked = selectedEntities.some((e) => e.isLocked);
+  const isAnyLocked = selectedEntities.some(
+    (e) => e.isLocked || (e.type === 'image' && Boolean((e as ImageEntity).isLockedToBackground))
+  );
   const hasPdfDocument = selectedEntities.some((e) => e.type === 'pdf_document');
 
   return (
@@ -552,8 +554,8 @@ export const SelectionOverlay: React.FC = () => {
         >
           <path
             d={liveLasso.pathD}
-            fill="rgba(0, 120, 215, 0.2)"
-            stroke="rgb(0, 120, 215)"
+            fill="rgba(0, 120, 212, 0.2)"
+            stroke="rgb(0, 120, 212)"
             strokeWidth={1.5}
             strokeDasharray="4 3"
           />
@@ -581,16 +583,18 @@ export const SelectionOverlay: React.FC = () => {
           {/* Selection Box Body (drag to translate) */}
           <div
             id="wb-selection-box"
-            onPointerDown={hasPdfDocument ? undefined : handleBodyPointerDown}
+            onPointerDown={hasPdfDocument || isAnyLocked ? undefined : handleBodyPointerDown}
             style={{
               position: 'absolute',
               left: `${boxX}px`,
               top: `${boxY}px`,
               width: `${boxW}px`,
               height: `${boxH}px`,
-              border: '1.5px solid #0078D4',
+              border: isAnyLocked
+                ? '1.5px dashed rgba(0, 120, 212, 0.7)'
+                : '1.5px solid #0078D4',
               backgroundColor: isAnyLocked
-                ? 'rgba(128, 128, 128, 0.08)'
+                ? 'rgba(0, 120, 212, 0.04)'
                 : hasPdfDocument
                 ? 'transparent'
                 : 'rgba(0, 120, 212, 0.05)',
@@ -1001,7 +1005,7 @@ export const SelectionOverlay: React.FC = () => {
               className="wb-selection-action-btn"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={handleToggleLock}
-              title={isAnyLocked ? 'Unlock Objects' : 'Lock to Background'}
+              title={isAnyLocked ? 'Unlock from Background' : 'Lock to Background'}
               style={{
                 width: '32px',
                 height: '32px',
@@ -1018,15 +1022,7 @@ export const SelectionOverlay: React.FC = () => {
                 padding: 0,
               }}
             >
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <rect x="4" y="9" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-                <path
-                  d={isAnyLocked ? "M7 9V6a3 3 0 016 0v3" : "M7 9V6a3 3 0 016 0"}
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                />
-              </svg>
+              {isAnyLocked ? <UnlockIcon size={18} color="#0078D4" /> : <LockIcon size={18} />}
             </button>
 
             {/* Divider */}

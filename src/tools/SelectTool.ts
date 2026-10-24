@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Select Tool & Marquee Selection Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -184,11 +184,6 @@ export class SelectToolEngine {
     // Test in reverse order (topmost zIndex first)
     for (let i = allEntities.length - 1; i >= 0; i--) {
       const entity = allEntities[i];
-
-      // Immunity: Locked items and locked-to-background images cannot be selected via click
-      if (entity.isLocked || (entity.type === 'image' && (entity as ImageEntity).isLockedToBackground)) {
-        continue;
-      }
 
       const b = entity.bounds;
       const hitMargin = 8;

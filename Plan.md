@@ -245,18 +245,18 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Implement reactive `toastStore` in `src/store/toastStore.ts` and floating Fluent Acrylic toast component in `src/components/common/Toast.tsx` mounted in `src/App.tsx`.
 
 ### Milestone 20: Locked Object Selection, Visual Feedback & One-Click Unlock
-- [ ] **20.1 Fix Locked Pointer Trap & Select Mode Interaction:**
+- [x] **20.1 Fix Locked Pointer Trap & Select Mode Interaction:**
   - In `src/components/canvas/ImageWidget.tsx`:
     - Fix the CSS pointer-events trap: in inking modes (`Pen`, `Highlighter`, `Laser`, `Eraser`), apply `pointerEvents: 'none'` so drawing over locked photos/diagrams has zero interference.
     - In `Select` mode, keep `pointerEvents: 'auto'` on the widget container so hovering and clicking are always detected.
     - Render a persistent/hover-responsive acrylic "Locked to Background" pill with a direct "Unlock" button.
-- [ ] **20.2 Selection Tool & Overlay Locked State Integration:**
+- [x] **20.2 Selection Tool & Overlay Locked State Integration:**
   - In `src/tools/SelectTool.ts`:
     - Allow clicking locked entities in `Select` mode to select them in a designated locked state (`selectionStore.select(entity.id)`).
   - In `src/components/canvas/SelectionOverlay.tsx`:
     - When a selected entity is locked:
       - Hide resize handles and rotation stem.
-      - Render a distinct subtle dashed border (`1.5px dashed rgba(0, 120, 212, 0.6)`).
+      - Render a distinct subtle dashed border (`1.5px dashed rgba(0, 120, 212, 0.7)`).
       - In the floating context menu pill, highlight the Lock button as active with a prominent **"Unlock from Background"** action that unlocks the entity and returns it to standard movable/resizable state with full Undo/Redo (`Ctrl+Z`).
 
 ### Milestone 21: Sticky Note & Text Box Seamless Editing & Pointer Pass-Through
@@ -288,6 +288,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `19.2 Undo/Redo Command History Integration & Fluent Toast Banner (Milestone 19 complete)`
-- **Current Active Sub-Task:** `User Reviewing Milestones 20, 21, and 22 in Plan.md`
-- **Next Recommended Prompt:** `"Execute Milestone 20 (Locked Object Selection, Visual Feedback & One-Click Unlock)"`
+- **Last Completed Sub-Task:** `20.2 Selection Tool & Overlay Locked State Integration (Milestone 20 complete)`
+- **Current Active Sub-Task:** `Ready for Milestone 21 (Sticky Note & Text Box Seamless Editing & Pointer Pass-Through)`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 21 (Sticky Note & Text Box Seamless Editing & Pointer Pass-Through) sequentially."`

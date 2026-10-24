@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Image & Document Canvas Widget
  *
  * Reverse-Engineered from REA Evidence:
@@ -14,6 +14,7 @@ import React, { memo, useState } from 'react';
 import type { ImageEntity } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
 import { selectionStore, useSelectionStore } from '../../store/selectionStore';
+import { useInkingStore } from '../../store/inkingStore';
 import { historyManager } from '../../canvas/history';
 import { LockIcon, UnlockIcon } from '../../assets/icons';
 
@@ -25,14 +26,13 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
   const { isSelected: checkIsSelected } = useSelectionStore();
   const isSelected = checkIsSelected(image.id);
   const [isHovered, setIsHovered] = useState(false);
+  const { selectedTool } = useInkingStore();
+  const isSelectTool = selectedTool === 'Select';
 
   const isLocked = Boolean(image.isLockedToBackground || image.isLocked);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (isLocked) {
-      // In locked mode, pointer clicks pass through so drawing over the image is effortless
-      return;
-    }
+    if (!isSelectTool) return;
 
     if (e.button === 0) {
       e.stopPropagation();
@@ -97,7 +97,7 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
         width: `${image.width}px`,
         height: `${image.height}px`,
         zIndex: isLocked ? 50 : (image.zIndex || 100),
-        pointerEvents: isLocked ? (isHovered ? 'auto' : 'none') : 'auto',
+        pointerEvents: isSelectTool ? 'auto' : 'none',
         borderRadius: '6px',
         userSelect: 'none',
         boxShadow: isLocked
@@ -117,7 +117,9 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {
+        if (!isSelectTool) return;
         e.preventDefault();
+        e.stopPropagation();
         handleToggleLock(e);
       }}
     >
@@ -137,8 +139,9 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
       />
 
       {/* Locked to Background indicator badge & quick unlock button */}
-      {isLocked && isHovered && (
+      {isLocked && isSelectTool && (
         <div
+          id={`wb-image-locked-badge-${image.id}`}
           style={{
             position: 'absolute',
             top: '8px',
@@ -148,23 +151,27 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
             gap: '6px',
             padding: '4px 10px',
             borderRadius: '20px',
-            backgroundColor: 'rgba(255, 255, 255, 0.92)',
+            backgroundColor: 'rgba(255, 255, 255, 0.94)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
             boxShadow: '0 2px 8px rgba(0, 0, 0, 0.18)',
-            border: '1px solid rgba(0, 0, 0, 0.08)',
+            border: '1px solid rgba(0, 0, 0, 0.1)',
             fontSize: '11px',
             fontWeight: 600,
             color: '#323130',
             pointerEvents: 'auto',
             cursor: 'default',
-            animation: 'wbFadeIn 0.12s ease',
+            opacity: isHovered || isSelected ? 1 : 0.75,
+            transition: 'opacity 0.15s ease',
+            zIndex: 10,
           }}
         >
           <LockIcon size={14} color="#0078D4" />
           <span>Locked to Background</span>
           <button
+            id={`wb-image-unlock-btn-${image.id}`}
             onClick={handleToggleLock}
+            onPointerDown={(e) => e.stopPropagation()}
             title="Unlock from background to move, resize, or delete"
             style={{
               display: 'flex',
