@@ -40,14 +40,18 @@ export function distToSegment(p: Point, v: Point, w: Point): number {
 
 /**
  * Finds the topmost visual entity under point p (highest zIndex first).
- * Excludes locked background entities.
+ * Prioritizes unlocked entities (Pass 1). If no unlocked entity is hit at point p,
+ * falls back to topmost locked entities (Pass 2) so locked objects can be selected
+ * and unlocked.
  */
 export function findTopEntityAtPoint(p: Point, hitMargin: number = 6): CanvasEntity | null {
   const allEntities = sceneStore.getAllEntities();
-  // allEntities is sorted ascending by zIndex; search in reverse order (topmost first)
+
+  // Pass 1: Check unlocked entities in descending visual order
   for (let i = allEntities.length - 1; i >= 0; i--) {
     const entity = allEntities[i];
-    if (entity.isLocked || (entity.type === 'image' && (entity as any).isLockedToBackground)) {
+    const isLocked = Boolean(entity.isLocked || (entity.type === 'image' && (entity as any).isLockedToBackground));
+    if (isLocked) {
       continue;
     }
 
@@ -77,8 +81,29 @@ export function findTopEntityAtPoint(p: Point, hitMargin: number = 6): CanvasEnt
       return entity;
     }
   }
+
+  // Pass 2: Fallback to locked entities in descending visual order
+  for (let i = allEntities.length - 1; i >= 0; i--) {
+    const entity = allEntities[i];
+    const isLocked = Boolean(entity.isLocked || (entity.type === 'image' && (entity as any).isLockedToBackground));
+    if (!isLocked) {
+      continue;
+    }
+
+    const b = entity.bounds;
+    if (
+      p.x >= b.minX - hitMargin &&
+      p.x <= b.maxX + hitMargin &&
+      p.y >= b.minY - hitMargin &&
+      p.y <= b.maxY + hitMargin
+    ) {
+      return entity;
+    }
+  }
+
   return null;
 }
+
 
 /**
  * Checks if line segment (p1, p2) intersects axis-aligned line segment (q1, q2)

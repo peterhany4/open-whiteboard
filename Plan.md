@@ -397,9 +397,52 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 27: Unified Object Lifecycle (Universal Lock/Unlock Standard & Right-Click Context/Pan Parity)
+- [x] **27.1 Microsoft Whiteboard Right-Click Interaction Parity (Single-Click Context Menu vs Drag Panning):**
+  - Reverse-Engineered REA Architecture (`BoardEditorComponent-852bcd1f`, `722545`, `731369`):
+    - Mouse button 2 (`pointerdown` with `e.button === 2`): Records start pointer coordinates without immediately locking the viewport into drag mode.
+    - Pointer move: If the cursor travels beyond the drag threshold (`> 3px`), engage canvas pan with the grabbing hand cursor and update camera matrix coordinates.
+    - Pointer up:
+      - If dragged $\rightarrow$ cleanly terminates viewport pan; suppresses context menu.
+      - If released without dragging (`dist <= 3px`, single right-click tap):
+        - Hit-tests the canvas at pointer world coordinates.
+        - If an entity is under the cursor: selects that entity (or keeps it selected if already selected) and displays its floating context menu (`#wb-selection-context-menu`).
+        - If empty canvas: deselects all objects.
+  - In `src/canvas/CanvasViewport.tsx`:
+    - Refactor right-click pointer handling to distinguish single right-click tap (select & show context options) from right-click drag pan (viewport navigation).
+- [x] **27.2 Universal Object Lock/Unlock Lifecycle (Selectable Locked Objects, Dashed Outline & Unlock Button):**
+  - Standardize behavior across ALL canvas entities (Images, Sticky Notes, Text boxes, Shapes, Reactions, Note Grids, Documents):
+    - In `src/tools/SelectTool.ts`:
+      - Update `findTopEntityAtPoint` to use two-pass hit-testing:
+        - Pass 1: Prioritize topmost unlocked entity under the cursor.
+        - Pass 2: Fallback to topmost locked entity under cursor if no unlocked entity is present.
+    - In `src/components/canvas/SelectionOverlay.tsx`:
+      - Remove `selectionStore.clearSelection()` in `handleToggleLock` so locking keeps the object selected.
+      - Render locked selection with Fluent dashed outline (`1.5px dashed rgba(0, 120, 212, 0.7)`), hide resize & rotation handles, and disable drag translation.
+      - In `#wb-selection-box`, preserve selection when clicking inside a locked object, while allowing selection transfer if an unlocked entity sits on top.
+      - Ensure the Unlock button (`<UnlockIcon />`) in the context bar unlocks the object on click.
+    - In `src/tools/ShortcutEngine.ts`:
+      - Add global `Ctrl+L` shortcut to toggle lock/unlock on all selected entities.
+- [x] **27.3 Eliminate ImageWidget-Specific Hacks & Standardize All Canvas Entities:**
+  - In `src/components/canvas/ImageWidget.tsx`:
+    - Remove the hardcoded, non-standard `onContextMenu={handleToggleLock}`.
+    - Remove `if (!isLocked)` in `handlePointerDown` so locked images can be selected with left-click like all other entities.
+    - Remove redundant local `handleToggleLock` in favor of universal `SelectionOverlay` and `ShortcutEngine` actions.
+- [x] **27.4 Automated Test Verification & Clean Production Build:**
+  - Create `scratch/test_milestone27_lock_and_rightclick.js` verifying:
+    1. Right-click tap selects an object; right-click drag pans the viewport.
+    2. Locking an object retains selection with dashed border and exposes the Unlock action.
+    3. Re-selecting a locked object works via left-click or right-click.
+    4. Unlock action (context button or `Ctrl+L`) restores unlocked state across all object types.
+  - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `26.4 Automated Test Verification & Clean Production Build (Milestone 26 complete)`
-- **Current Active Sub-Task:** `Milestone 26 Complete — Verified with Automated Test Suite & Clean Production Build`
-- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 26, or specify the next milestone or feature!"`
+- **Last Completed Sub-Task:** `27.4 Automated Test Verification & Clean Production Build (Milestone 27 complete)`
+- **Current Active Sub-Task:** `Milestone 27 Complete — Verified with Automated Test Suite & Clean Production Build`
+- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 27, or specify the next milestone or feature!"`
+
+

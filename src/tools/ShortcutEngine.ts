@@ -14,6 +14,7 @@ import { canvasStore } from '../store/canvasStore';
 import { selectionStore } from '../store/selectionStore';
 import { sceneStore } from '../store/sceneStore';
 import { boardStore } from '../store/boardStore';
+import { historyManager } from '../canvas/history';
 
 export interface ShortcutDefinition {
   key: string;
@@ -116,6 +117,44 @@ export class ShortcutEngine {
         if (ids.length > 0) {
           e.preventDefault();
           sceneStore.sendToBack(ids);
+        }
+        return;
+      }
+
+      // Toggle Lock / Unlock: Ctrl+L
+      if (e.key === 'l' || e.key === 'L') {
+        const selected = selectionStore.getSelectedEntities();
+        if (selected.length > 0) {
+          e.preventDefault();
+          const targetLock = selected.some(
+            (ent) => !ent.isLocked && !(ent.type === 'image' && (ent as any).isLockedToBackground)
+          );
+          historyManager.inUndoGroup(targetLock ? 'Lock to Background' : 'Unlock Objects', () => {
+            for (const ent of selected) {
+              if (ent.type === 'image') {
+                sceneStore.updateEntity(
+                  ent.id,
+                  {
+                    isLocked: targetLock,
+                    isLockedToBackground: targetLock,
+                    zIndex: targetLock ? 50 : 100,
+                  },
+                  true
+                );
+              } else if (ent.type === 'pdf_document') {
+                sceneStore.updateEntity(
+                  ent.id,
+                  {
+                    isLocked: targetLock,
+                    zIndex: targetLock ? 50 : 100,
+                  },
+                  true
+                );
+              } else {
+                sceneStore.updateEntity(ent.id, { isLocked: targetLock }, true);
+              }
+            }
+          });
         }
         return;
       }

@@ -14,7 +14,7 @@ import type { LaserStrokeState } from '../tools/LaserTool';
 import { eraserTool } from '../tools/EraserTool';
 import type { EraserCursorState } from '../tools/EraserTool';
 import { lassoTool } from '../tools/LassoTool';
-import { selectTool } from '../tools/SelectTool';
+import { selectTool, findTopEntityAtPoint } from '../tools/SelectTool';
 import type { LiveMarqueeState } from '../tools/SelectTool';
 import { RulerWidget } from '../components/canvas/RulerWidget';
 import { SelectionOverlay } from '../components/canvas/SelectionOverlay';
@@ -95,6 +95,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   // References for active panning and gestures
   const isDraggingRef = useRef(false);
   const lastPointerRef = useRef<Point>({ x: 0, y: 0 });
+  const isRightClickDownRef = useRef(false);
   const isRightClickPanningRef = useRef(false);
   const hasRightClickDraggedRef = useRef(false);
   const rightClickStartPosRef = useRef<Point>({ x: 0, y: 0 });
@@ -554,7 +555,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         )
     );
 
-    // 1. Right-Click Hold & Drag Viewport Pan (Milestone 15.1)
+    // 1. Right-Click Hold & Drag Viewport Pan (Milestone 15.1 & Milestone 27.1)
     if (e.button === 2) {
       if (!isInteractiveFloatingUI) {
         e.preventDefault();
@@ -563,12 +564,11 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         } catch {
           // Ignore if pointer capture fails
         }
-        isDraggingRef.current = true;
-        isRightClickPanningRef.current = true;
+        isRightClickDownRef.current = true;
+        isRightClickPanningRef.current = false;
         hasRightClickDraggedRef.current = false;
         rightClickStartPosRef.current = { x: e.clientX, y: e.clientY };
         lastPointerRef.current = { x: e.clientX, y: e.clientY };
-        canvasStore.setIsPanning(true);
         return;
       }
     }
@@ -668,23 +668,34 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    // 1. Active Viewport Panning (Right-Click Drag, Space+Drag, Hand Drag)
+    // 1. Right-Click Drag Pan (Threshold > 3px activates smooth panning hand)
+    if (isRightClickDownRef.current) {
+      e.preventDefault();
+      const dist = Math.hypot(
+        e.clientX - rightClickStartPosRef.current.x,
+        e.clientY - rightClickStartPosRef.current.y
+      );
+      if (dist > 3) {
+        if (!hasRightClickDraggedRef.current) {
+          hasRightClickDraggedRef.current = true;
+          isRightClickPanningRef.current = true;
+          isDraggingRef.current = true;
+          canvasStore.setIsPanning(true);
+        }
+        const dx = e.clientX - lastPointerRef.current.x;
+        const dy = e.clientY - lastPointerRef.current.y;
+        lastPointerRef.current = { x: e.clientX, y: e.clientY };
+        canvasStore.panBy(dx, dy);
+      }
+      return;
+    }
+
+    // 2. Active Viewport Panning (Space+Drag, Hand Drag)
     if (isDraggingRef.current) {
       e.preventDefault();
       const dx = e.clientX - lastPointerRef.current.x;
       const dy = e.clientY - lastPointerRef.current.y;
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
-
-      if (isRightClickPanningRef.current) {
-        const dist = Math.hypot(
-          e.clientX - rightClickStartPosRef.current.x,
-          e.clientY - rightClickStartPosRef.current.y
-        );
-        if (dist > 3) {
-          hasRightClickDraggedRef.current = true;
-        }
-      }
-
       canvasStore.panBy(dx, dy);
       return;
     }
@@ -743,10 +754,48 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    // 1. Release Viewport Pan (Right-Click, Space, Hand)
+    // 1. Release Right-Click (Pan Hand vs Single-Click Context Options)
+    if (e.button === 2 || isRightClickDownRef.current) {
+      const wasDragged = hasRightClickDraggedRef.current;
+      isRightClickDownRef.current = false;
+      isRightClickPanningRef.current = false;
+      hasRightClickDraggedRef.current = false;
+      isDraggingRef.current = false;
+      canvasStore.setIsPanning(false);
+
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // Ignore if already released
+      }
+
+      if (wasDragged) {
+        // Panning session finished cleanly without triggering selection or context menu
+        return;
+      }
+
+      // Single Right-Click Click & Release without dragging:
+      // Hit-test at pointer world coordinates!
+      const rect = viewportRef.current?.getBoundingClientRect();
+      const clickWorld = screenToWorld({ x: e.clientX, y: e.clientY }, camera, rect);
+      const hitEntity = findTopEntityAtPoint(clickWorld, 8);
+
+      if (hitEntity) {
+        // If the hit entity is not currently selected, select it
+        if (!selectionStore.isSelected(hitEntity.id)) {
+          selectionStore.select(hitEntity.id, false);
+        }
+        // Floating context bar is automatically rendered for the selected entity!
+      } else {
+        // Single right-click on empty canvas: deselect all
+        selectionStore.clearSelection();
+      }
+      return;
+    }
+
+    // 2. Release Viewport Pan (Space, Hand)
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
-      isRightClickPanningRef.current = false;
       canvasStore.setIsPanning(false);
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
@@ -805,9 +854,11 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    isRightClickDownRef.current = false;
+    hasRightClickDraggedRef.current = false;
+    isRightClickPanningRef.current = false;
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
-      isRightClickPanningRef.current = false;
       canvasStore.setIsPanning(false);
     }
     if (isMiddleClickErasingRef.current) {

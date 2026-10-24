@@ -102,22 +102,36 @@ export const SelectionOverlay: React.FC = () => {
         const isAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
         selectionStore.select(topEntity.id, isAdditive);
 
-        // Immediate drag engagement for the newly selected entity
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-        isDraggingBodyRef.current = true;
-        hasDraggedBodyRef.current = false;
-        dragInitialRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          entities: [JSON.parse(JSON.stringify(topEntity))],
-          initialBounds: { ...topEntity.bounds },
-        };
+        // Immediate drag engagement for the newly selected entity (only if unlocked)
+        const isTopLocked = Boolean(
+          topEntity.isLocked || (topEntity.type === 'image' && (topEntity as any).isLockedToBackground)
+        );
+        if (!isTopLocked) {
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          isDraggingBodyRef.current = true;
+          hasDraggedBodyRef.current = false;
+          dragInitialRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            entities: [JSON.parse(JSON.stringify(topEntity))],
+            initialBounds: { ...topEntity.bounds },
+          };
+        }
+        return;
+      }
+
+      // Locked objects are stationary and cannot be translated/moved
+      const isAnyCurrentLocked = currentEntities.some(
+        (ent) => ent.isLocked || (ent.type === 'image' && Boolean((ent as ImageEntity).isLockedToBackground))
+      );
+      if (isAnyCurrentLocked) {
         return;
       }
 
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       isDraggingBodyRef.current = true;
       hasDraggedBodyRef.current = false;
+
 
       const allScene = sceneStore.getAllEntities();
       const entitiesToMove: CanvasEntity[] = [...currentEntities];
@@ -541,10 +555,6 @@ export const SelectionOverlay: React.FC = () => {
         }
       }
     });
-
-    if (targetLock) {
-      selectionStore.clearSelection();
-    }
   }, []);
 
   const handleApplyColor = useCallback((color: string) => {
@@ -636,7 +646,7 @@ export const SelectionOverlay: React.FC = () => {
           {/* Selection Box Body (drag to translate) */}
           <div
             id="wb-selection-box"
-            onPointerDown={hasPdfDocument || isAnyLocked || isCurrentlyEditing ? undefined : handleBodyPointerDown}
+            onPointerDown={hasPdfDocument || isCurrentlyEditing ? undefined : handleBodyPointerDown}
             onDoubleClick={(e) => {
               if (isAnyLocked) return;
               e.stopPropagation();

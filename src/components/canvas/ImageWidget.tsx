@@ -12,10 +12,8 @@
 
 import React, { memo } from 'react';
 import type { ImageEntity } from '../../canvas/sceneGraph';
-import { sceneStore } from '../../store/sceneStore';
 import { selectionStore } from '../../store/selectionStore';
 import { useInkingStore } from '../../store/inkingStore';
-import { historyManager } from '../../canvas/history';
 
 interface ImageWidgetProps {
   image: ImageEntity;
@@ -33,56 +31,8 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
     if (e.button === 0) {
       e.stopPropagation();
       const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
-      if (!isLocked) {
-        selectionStore.select(image.id, isShift);
-      }
+      selectionStore.select(image.id, isShift);
     }
-  };
-
-  const handleToggleLock = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const willBeLocked = !isLocked;
-    const prevLocked = isLocked;
-    const prevZIndex = image.zIndex;
-    const newZIndex = willBeLocked ? 50 : 100;
-
-    historyManager.execute({
-      name: willBeLocked ? 'Lock to Background' : 'Unlock from Background',
-      execute: () => {
-        sceneStore.updateEntity(
-          image.id,
-          {
-            isLockedToBackground: willBeLocked,
-            isLocked: willBeLocked,
-            zIndex: newZIndex,
-          },
-          true
-        );
-        if (willBeLocked) {
-          selectionStore.deselect(image.id);
-        } else {
-          selectionStore.select(image.id);
-        }
-      },
-      undo: () => {
-        sceneStore.updateEntity(
-          image.id,
-          {
-            isLockedToBackground: prevLocked,
-            isLocked: prevLocked,
-            zIndex: prevZIndex,
-          },
-          true
-        );
-        if (prevLocked) {
-          selectionStore.deselect(image.id);
-        } else {
-          selectionStore.select(image.id);
-        }
-      },
-    });
   };
 
   return (
@@ -104,12 +54,6 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
         overflow: 'hidden',
       }}
       onPointerDown={handlePointerDown}
-      onContextMenu={(e) => {
-        if (!isSelectTool) return;
-        e.preventDefault();
-        e.stopPropagation();
-        handleToggleLock(e);
-      }}
     >
       <img
         src={image.src}
