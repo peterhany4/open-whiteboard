@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Selection Store
  *
  * Manages selected entity IDs, selection bounding box, and multi-selection state.
@@ -20,6 +20,7 @@ import { getUnionBounds } from '../canvas/sceneGraph';
 
 class SelectionStore {
   private selectedIds = new Set<string>();
+  private editingEntityId: string | null = null;
   private listeners = new Set<() => void>();
   private snapshotVersion = 0;
 
@@ -51,9 +52,27 @@ class SelectionStore {
     return this.selectedIds.size;
   }
 
+  public getEditingEntityId(): string | null {
+    return this.editingEntityId;
+  }
+
+  public isEditingEntity(id: string): boolean {
+    return this.editingEntityId === id;
+  }
+
+  public setEditingEntityId(id: string | null) {
+    if (this.editingEntityId !== id) {
+      this.editingEntityId = id;
+      this.notify();
+    }
+  }
+
   public select(id: string, additive: boolean = false) {
     if (!additive) {
       this.selectedIds.clear();
+      if (this.editingEntityId !== id) {
+        this.editingEntityId = null;
+      }
     }
     this.selectedIds.add(id);
     this.notify();
@@ -62,6 +81,7 @@ class SelectionStore {
   public selectMultiple(ids: string[], additive: boolean = false) {
     if (!additive) {
       this.selectedIds.clear();
+      this.editingEntityId = null;
     }
     for (const id of ids) {
       this.selectedIds.add(id);
@@ -70,13 +90,18 @@ class SelectionStore {
   }
 
   public deselect(id: string) {
+    if (this.editingEntityId === id) {
+      this.editingEntityId = null;
+    }
     if (this.selectedIds.delete(id)) {
       this.notify();
     }
   }
 
   public clearSelection() {
-    if (this.selectedIds.size > 0) {
+    const hadEditing = this.editingEntityId !== null;
+    this.editingEntityId = null;
+    if (this.selectedIds.size > 0 || hadEditing) {
       this.selectedIds.clear();
       this.notify();
     }
@@ -180,6 +205,9 @@ export function useSelectionStore() {
     selectedCount: selectionStore.getSelectedCount(),
     selectedEntities: selectionStore.getSelectedEntities(),
     selectionBounds: selectionStore.getSelectionBounds(),
+    editingEntityId: selectionStore.getEditingEntityId(),
+    isEditingEntity: (id: string) => selectionStore.isEditingEntity(id),
+    setEditingEntityId: (id: string | null) => selectionStore.setEditingEntityId(id),
     isSelected: (id: string) => selectionStore.isSelected(id),
     select: (id: string, additive?: boolean) => selectionStore.select(id, additive),
     selectMultiple: (ids: string[], additive?: boolean) =>

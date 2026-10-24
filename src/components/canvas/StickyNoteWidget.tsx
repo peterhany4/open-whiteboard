@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Authentic Folded-Corner Sticky Note Widget
  *
  * Reverse-Engineered from REA Evidence:
@@ -11,8 +11,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { NoteEntity } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
-import { selectionStore } from '../../store/selectionStore';
-import { useSelectionStore } from '../../store/selectionStore';
+import { selectionStore, useSelectionStore } from '../../store/selectionStore';
+import { useInkingStore } from '../../store/inkingStore';
 
 export const NOTE_PASTEL_COLORS: { name: string; color: string; textColor: string }[] = [
   { name: 'Yellow', color: '#FFF1A8', textColor: '#1F1F1F' },
@@ -30,8 +30,11 @@ interface StickyNoteWidgetProps {
 }
 
 export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
-  const { isSelected } = useSelectionStore();
+  const { isSelected, editingEntityId, setEditingEntityId } = useSelectionStore();
   const selected = isSelected(note.id);
+  const { selectedTool } = useInkingStore();
+  const isSelectTool = selectedTool === 'Select';
+
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(note.text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -40,6 +43,23 @@ export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
   useEffect(() => {
     setText(note.text);
   }, [note.text]);
+
+  // Synchronize editing state from selectionStore
+  const isStoreEditing = editingEntityId === note.id;
+  useEffect(() => {
+    if (isStoreEditing) {
+      setIsEditing(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const len = textareaRef.current.value.length;
+          textareaRef.current.setSelectionRange(len, len);
+        }
+      }, 20);
+    } else {
+      setIsEditing(false);
+    }
+  }, [isStoreEditing]);
 
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -52,29 +72,65 @@ export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
 
   const handleBlur = useCallback(() => {
     setIsEditing(false);
+    setEditingEntityId(null);
     // Commit final text to history for Undo/Redo
     if (text !== note.text) {
       sceneStore.updateEntity(note.id, { text }, true);
     }
-  }, [note.id, note.text, text]);
+  }, [note.id, note.text, text, setEditingEntityId]);
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsEditing(true);
-    setTimeout(() => textareaRef.current?.focus(), 20);
-  }, []);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        textareaRef.current?.blur();
+      }
+    },
+    []
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isSelectTool) return;
+      e.stopPropagation();
+      selectionStore.select(note.id);
+      setEditingEntityId(note.id);
+      setIsEditing(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const len = textareaRef.current.value.length;
+          textareaRef.current.setSelectionRange(len, len);
+        }
+      }, 20);
+    },
+    [note.id, isSelectTool, setEditingEntityId]
+  );
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (!isSelectTool) return;
       e.stopPropagation();
       const isAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
       if (isAdditive && selected) {
         selectionStore.deselect(note.id);
       } else {
         selectionStore.select(note.id, isAdditive);
+        // If already selected and clicked again, activate inline editing
+        if (selected && !isAdditive && !isEditing) {
+          setEditingEntityId(note.id);
+          setIsEditing(true);
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+              const len = textareaRef.current.value.length;
+              textareaRef.current.setSelectionRange(len, len);
+            }
+          }, 20);
+        }
       }
     },
-    [note.id, selected]
+    [note.id, selected, isSelectTool, isEditing, setEditingEntityId]
   );
 
   const handleAddReaction = useCallback(
@@ -106,7 +162,7 @@ export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onPointerDown={(e) => {
-        if (e.button === 0) e.stopPropagation();
+        if (isSelectTool && e.button === 0) e.stopPropagation();
       }}
       style={{
         position: 'absolute',
@@ -122,11 +178,11 @@ export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
         boxShadow: selected
           ? '0 0 0 2px #0078D4, 0 8px 24px rgba(0,0,0,0.18)'
           : '0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)',
-        cursor: 'pointer',
+        cursor: isSelectTool ? (isEditing ? 'text' : 'pointer') : 'inherit',
         display: 'flex',
         flexDirection: 'column',
         userSelect: isEditing ? 'text' : 'none',
-        pointerEvents: 'auto',
+        pointerEvents: isSelectTool ? 'auto' : 'none',
         zIndex: note.zIndex,
         transition: 'box-shadow 0.15s ease, transform 0.1s ease',
         overflow: 'hidden',
@@ -164,6 +220,7 @@ export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
         value={text}
         onChange={handleTextChange}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         readOnly={!isEditing}
         placeholder="Type a note..."
         style={{

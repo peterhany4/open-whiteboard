@@ -49,7 +49,7 @@ interface DragInitialState {
 }
 
 export const SelectionOverlay: React.FC = () => {
-  const { selectedCount, selectionBounds } = useSelectionStore();
+  const { selectedCount, selectionBounds, editingEntityId } = useSelectionStore();
   const { camera } = useCanvasStore();
   const { isDark } = useTheme();
 
@@ -76,6 +76,7 @@ export const SelectionOverlay: React.FC = () => {
 
   // Transformation Drag Refs
   const isDraggingBodyRef = useRef(false);
+  const hasDraggedBodyRef = useRef(false);
   const activeResizeHandleRef = useRef<ResizeHandle | null>(null);
   const isRotatingRef = useRef(false);
   const dragInitialRef = useRef<DragInitialState | null>(null);
@@ -89,6 +90,7 @@ export const SelectionOverlay: React.FC = () => {
 
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       isDraggingBodyRef.current = true;
+      hasDraggedBodyRef.current = false;
 
       const currentEntities = selectionStore.getSelectedEntities();
       const allScene = sceneStore.getAllEntities();
@@ -184,6 +186,12 @@ export const SelectionOverlay: React.FC = () => {
       if (isDraggingBodyRef.current) {
         e.stopPropagation();
         e.preventDefault();
+
+        const dist = Math.hypot(e.clientX - initial.startX, e.clientY - initial.startY);
+        if (dist >= 4) {
+          hasDraggedBodyRef.current = true;
+        }
+        if (!hasDraggedBodyRef.current) return;
 
         const dx = (e.clientX - initial.startX) / camera.scale;
         const dy = (e.clientY - initial.startY) / camera.scale;
@@ -398,12 +406,17 @@ export const SelectionOverlay: React.FC = () => {
         isRotatingRef.current
       ) {
         e.stopPropagation();
+
+        const wasDraggingBody = isDraggingBodyRef.current;
+        const didDrag = hasDraggedBodyRef.current;
+        const initial = dragInitialRef.current;
+
         isDraggingBodyRef.current = false;
+        hasDraggedBodyRef.current = false;
         activeResizeHandleRef.current = null;
         isRotatingRef.current = false;
 
-        const initial = dragInitialRef.current;
-        if (initial) {
+        if (initial && (didDrag || !wasDraggingBody)) {
           const beforeSnapshot = initial.entities;
           const afterSnapshot = initial.entities
             .map((item) => sceneStore.getEntity(item.id))
@@ -423,6 +436,19 @@ export const SelectionOverlay: React.FC = () => {
               }
             },
           });
+        } else if (wasDraggingBody && !didDrag) {
+          // Click or tap without dragging on a single editable entity: activate editing mode!
+          const currentEntities = selectionStore.getSelectedEntities();
+          if (currentEntities.length === 1) {
+            const ent = currentEntities[0];
+            if (
+              ent.type === 'note' ||
+              ent.type === 'text' ||
+              (ent.type === 'shape' && ent.shapeType !== 'line' && ent.shapeType !== 'arrow')
+            ) {
+              selectionStore.setEditingEntityId(ent.id);
+            }
+          }
         }
 
         dragInitialRef.current = null;
@@ -543,6 +569,11 @@ export const SelectionOverlay: React.FC = () => {
     (e) => e.isLocked || (e.type === 'image' && Boolean((e as ImageEntity).isLockedToBackground))
   );
   const hasPdfDocument = selectedEntities.some((e) => e.type === 'pdf_document');
+  const isCurrentlyEditing = Boolean(
+    editingEntityId &&
+      selectedEntities.length === 1 &&
+      selectedEntities[0].id === editingEntityId
+  );
 
   return (
     <>
@@ -592,7 +623,22 @@ export const SelectionOverlay: React.FC = () => {
           {/* Selection Box Body (drag to translate) */}
           <div
             id="wb-selection-box"
-            onPointerDown={hasPdfDocument || isAnyLocked ? undefined : handleBodyPointerDown}
+            onPointerDown={hasPdfDocument || isAnyLocked || isCurrentlyEditing ? undefined : handleBodyPointerDown}
+            onDoubleClick={(e) => {
+              if (isAnyLocked) return;
+              e.stopPropagation();
+              const currentEntities = selectionStore.getSelectedEntities();
+              if (currentEntities.length === 1) {
+                const ent = currentEntities[0];
+                if (
+                  ent.type === 'note' ||
+                  ent.type === 'text' ||
+                  (ent.type === 'shape' && ent.shapeType !== 'line' && ent.shapeType !== 'arrow')
+                ) {
+                  selectionStore.setEditingEntityId(ent.id);
+                }
+              }
+            }}
             style={{
               position: 'absolute',
               left: `${boxX}px`,
@@ -604,13 +650,13 @@ export const SelectionOverlay: React.FC = () => {
                 : '1.5px solid #0078D4',
               backgroundColor: isAnyLocked
                 ? 'rgba(0, 120, 212, 0.04)'
-                : hasPdfDocument
+                : (hasPdfDocument || isCurrentlyEditing)
                 ? 'transparent'
                 : 'rgba(0, 120, 212, 0.05)',
-              cursor: isAnyLocked ? 'default' : hasPdfDocument ? 'default' : 'move',
+              cursor: isAnyLocked ? 'default' : (hasPdfDocument || isCurrentlyEditing) ? 'default' : 'move',
               boxSizing: 'border-box',
               touchAction: 'none',
-              pointerEvents: hasPdfDocument ? 'none' : 'auto',
+              pointerEvents: (hasPdfDocument || isCurrentlyEditing) ? 'none' : 'auto',
             }}
           />
 

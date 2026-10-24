@@ -20,7 +20,7 @@ interface ShapeWidgetProps {
 }
 
 export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
-  const { isSelected } = useSelectionStore();
+  const { isSelected, editingEntityId, setEditingEntityId } = useSelectionStore();
   const selected = isSelected(shape.id);
   const { selectedTool } = useInkingStore();
   const { isDark } = useTheme();
@@ -37,17 +37,33 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
     setText(shape.text || '');
   }, [shape.text]);
 
+  // Synchronize editing state from selectionStore
+  const isStoreEditing = editingEntityId === shape.id;
+  useEffect(() => {
+    if (isStoreEditing && !isLineOrArrow) {
+      setIsEditing(true);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.select();
+      }, 30);
+    } else if (!isStoreEditing) {
+      setIsEditing(false);
+    }
+  }, [isStoreEditing, isLineOrArrow]);
+
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!isSelectTool || isLineOrArrow) return;
       e.stopPropagation();
+      selectionStore.select(shape.id);
+      setEditingEntityId(shape.id);
       setIsEditing(true);
       setTimeout(() => {
         textareaRef.current?.focus();
         textareaRef.current?.select();
       }, 30);
     },
-    [isSelectTool, isLineOrArrow]
+    [shape.id, isSelectTool, isLineOrArrow, setEditingEntityId]
   );
 
   const handleClick = useCallback(
@@ -60,7 +76,8 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
       } else {
         selectionStore.select(shape.id, isAdditive);
         // If already selected and clicked again, activate inline editing
-        if (selected && !isEditing && !isLineOrArrow) {
+        if (selected && !isAdditive && !isEditing && !isLineOrArrow) {
+          setEditingEntityId(shape.id);
           setIsEditing(true);
           setTimeout(() => {
             textareaRef.current?.focus();
@@ -69,7 +86,7 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
         }
       }
     },
-    [shape.id, selected, isSelectTool, isEditing, isLineOrArrow]
+    [shape.id, selected, isSelectTool, isEditing, isLineOrArrow, setEditingEntityId]
   );
 
   const handleTextChange = useCallback(
@@ -83,10 +100,11 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
 
   const handleBlur = useCallback(() => {
     setIsEditing(false);
+    setEditingEntityId(null);
     if (text !== (shape.text || '')) {
       sceneStore.updateEntity(shape.id, { text }, true);
     }
-  }, [shape.id, shape.text, text]);
+  }, [shape.id, shape.text, text, setEditingEntityId]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

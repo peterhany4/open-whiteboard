@@ -261,11 +261,11 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
       - In the floating context menu pill, highlight the Lock button as active with a prominent **"Unlock from Background"** action that unlocks the entity and returns it to standard movable/resizable state with full Undo/Redo (`Ctrl+Z`).
 
 ### Milestone 21: Sticky Note & Text Box Seamless Editing & Pointer Pass-Through
-- [ ] **21.1 Selection Overlay Interior Pointer Pass-Through:**
+- [x] **21.1 Selection Overlay Interior Pointer Pass-Through:**
   - In `src/components/canvas/SelectionOverlay.tsx`:
     - When a single text-editable entity (`note`, `text`, or `shape`) is selected, set `pointerEvents: 'none'` on the interior body of `#wb-selection-box` while keeping the outer border and handles interactive (`pointerEvents: 'auto'`).
     - This allows all clicks, text selections, and typing events inside the note/text box to reach the `<textarea>` unimpeded without losing selection.
-- [ ] **21.2 Natural Click-to-Edit & Textarea Focus Lifecycle:**
+- [x] **21.2 Natural Click-to-Edit & Textarea Focus Lifecycle:**
   - In `src/components/canvas/StickyNoteWidget.tsx` and `src/components/canvas/TextBoxWidget.tsx`:
     - When an already-selected note or text box is clicked, immediately focus into the `<textarea>` and activate editing mode (`isEditing: true`).
     - Add Escape key listener to exit editing mode cleanly and commit text changes to `sceneStore` with full Undo/Redo history.
@@ -289,6 +289,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `20.2 Selection Tool & Overlay Locked State Integration (Milestone 20 complete)`
-- **Current Active Sub-Task:** `Ready for Milestone 21 (Sticky Note & Text Box Seamless Editing & Pointer Pass-Through)`
-- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 21 (Sticky Note & Text Box Seamless Editing & Pointer Pass-Through) sequentially."`
+- **Last Completed Sub-Task:** `21.2 Natural Click-to-Edit, Escape Commit & Textarea Lifecycle (Milestone 21 complete)`
+- **Current Active Sub-Task:** `Ready for Milestone 22 (Smart PDF Text Highlighting)`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 22 (Smart PDF Text Highlighting) sequentially."`

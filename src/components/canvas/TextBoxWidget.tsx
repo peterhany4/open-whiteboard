@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Resizable Rich Text Box Widget
  *
  * Reverse-Engineered from REA Evidence:
@@ -12,6 +12,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { TextEntity } from '../../canvas/sceneGraph';
 import { sceneStore } from '../../store/sceneStore';
 import { selectionStore, useSelectionStore } from '../../store/selectionStore';
+import { useInkingStore } from '../../store/inkingStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
 interface TextBoxWidgetProps {
@@ -19,8 +20,10 @@ interface TextBoxWidgetProps {
 }
 
 export const TextBoxWidget: React.FC<TextBoxWidgetProps> = ({ textEntity }) => {
-  const { isSelected } = useSelectionStore();
+  const { isSelected, editingEntityId, setEditingEntityId } = useSelectionStore();
   const selected = isSelected(textEntity.id);
+  const { selectedTool } = useInkingStore();
+  const isSelectTool = selectedTool === 'Select';
   const { isDark } = useTheme();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -30,6 +33,39 @@ export const TextBoxWidget: React.FC<TextBoxWidgetProps> = ({ textEntity }) => {
   useEffect(() => {
     setText(textEntity.text || '');
   }, [textEntity.text]);
+
+  // Synchronize editing state from selectionStore
+  const isStoreEditing = editingEntityId === textEntity.id;
+  useEffect(() => {
+    if (isStoreEditing) {
+      setIsEditing(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const len = textareaRef.current.value.length;
+          textareaRef.current.setSelectionRange(len, len);
+        }
+      }, 20);
+    } else {
+      setIsEditing(false);
+    }
+  }, [isStoreEditing]);
+
+  // Dynamic auto-expansion for multi-line text
+  const adjustHeight = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollH = Math.max(32, textareaRef.current.scrollHeight);
+      textareaRef.current.style.height = `${scrollH}px`;
+      if (scrollH > textEntity.height) {
+        sceneStore.updateEntity(textEntity.id, { height: scrollH }, false);
+      }
+    }
+  }, [textEntity.id, textEntity.height]);
+
+  useEffect(() => {
+    adjustHeight();
+  }, [text, adjustHeight]);
 
   // Adaptive contrast calculation: Dark mode flips default dark text to white
   const rawColor = textEntity.color || '#1F1F1F';
@@ -50,28 +86,68 @@ export const TextBoxWidget: React.FC<TextBoxWidgetProps> = ({ textEntity }) => {
 
   const handleBlur = useCallback(() => {
     setIsEditing(false);
-    if (text !== textEntity.text) {
-      sceneStore.updateEntity(textEntity.id, { text }, true);
+    setEditingEntityId(null);
+    let finalH = textEntity.height;
+    if (textareaRef.current) {
+      finalH = Math.max(32, textareaRef.current.scrollHeight);
     }
-  }, [textEntity.id, textEntity.text, text]);
+    if (text !== textEntity.text || finalH !== textEntity.height) {
+      sceneStore.updateEntity(textEntity.id, { text, height: finalH }, true);
+    }
+  }, [textEntity.id, textEntity.text, textEntity.height, text, setEditingEntityId]);
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsEditing(true);
-    setTimeout(() => textareaRef.current?.focus(), 20);
-  }, []);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        textareaRef.current?.blur();
+      }
+    },
+    []
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isSelectTool) return;
+      e.stopPropagation();
+      selectionStore.select(textEntity.id);
+      setEditingEntityId(textEntity.id);
+      setIsEditing(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const len = textareaRef.current.value.length;
+          textareaRef.current.setSelectionRange(len, len);
+        }
+      }, 20);
+    },
+    [textEntity.id, isSelectTool, setEditingEntityId]
+  );
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (!isSelectTool) return;
       e.stopPropagation();
       const isAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
       if (isAdditive && selected) {
         selectionStore.deselect(textEntity.id);
       } else {
         selectionStore.select(textEntity.id, isAdditive);
+        // If already selected and clicked again, activate inline editing
+        if (selected && !isAdditive && !isEditing) {
+          setEditingEntityId(textEntity.id);
+          setIsEditing(true);
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+              const len = textareaRef.current.value.length;
+              textareaRef.current.setSelectionRange(len, len);
+            }
+          }, 20);
+        }
       }
     },
-    [textEntity.id, selected]
+    [textEntity.id, selected, isSelectTool, isEditing, setEditingEntityId]
   );
 
   return (
@@ -80,7 +156,7 @@ export const TextBoxWidget: React.FC<TextBoxWidgetProps> = ({ textEntity }) => {
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onPointerDown={(e) => {
-        if (e.button === 0) e.stopPropagation();
+        if (isSelectTool && e.button === 0) e.stopPropagation();
       }}
       style={{
         position: 'absolute',
@@ -90,9 +166,9 @@ export const TextBoxWidget: React.FC<TextBoxWidgetProps> = ({ textEntity }) => {
         minHeight: `${textEntity.height}px`,
         padding: '6px 8px',
         boxSizing: 'border-box',
-        cursor: isEditing ? 'text' : 'pointer',
+        cursor: isSelectTool ? (isEditing ? 'text' : 'pointer') : 'inherit',
         userSelect: isEditing ? 'text' : 'none',
-        pointerEvents: 'auto',
+        pointerEvents: isSelectTool ? 'auto' : 'none',
         zIndex: textEntity.zIndex,
         borderRadius: '4px',
         border: selected ? '1.5px dashed #0078D4' : '1.5px dashed transparent',
@@ -105,6 +181,7 @@ export const TextBoxWidget: React.FC<TextBoxWidgetProps> = ({ textEntity }) => {
         value={text}
         onChange={handleTextChange}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         readOnly={!isEditing}
         placeholder="Click to type text..."
         style={{
