@@ -37,3 +37,15 @@ html, body, #root {
     transform: translate(-50%, 0);
   }
 }
+
+/* Toast banner slide in from top */
+@keyframes wbToastSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}

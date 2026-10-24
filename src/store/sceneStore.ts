@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Spatial Scene Store
  *
  * Provides reactive entity storage, viewport culling, and deterministic Undo/Redo integration.
@@ -14,7 +14,7 @@ import {
   intersectsAABB,
   getUnionBounds,
 } from '../canvas/sceneGraph';
-import { historyManager } from '../canvas/history';
+import { historyManager, ClearCanvasCommand } from '../canvas/history';
 
 class SceneStore {
   private entities = new Map<string, CanvasEntity>();
@@ -188,19 +188,14 @@ class SceneStore {
     if (snapshot.length === 0) return;
 
     if (undoable) {
-      historyManager.execute({
-        name: 'Clear Whiteboard',
-        execute: () => {
-          this.entities.clear();
-          this.notify();
-        },
-        undo: () => {
-          for (const item of snapshot) {
-            this.entities.set(item.id, item);
-          }
-          this.notify();
-        },
+      const command = new ClearCanvasCommand<CanvasEntity>(snapshot, (entities) => {
+        this.entities.clear();
+        for (const item of entities) {
+          this.entities.set(item.id, item);
+        }
+        this.notify();
       });
+      historyManager.execute(command);
     } else {
       this.entities.clear();
       this.notify();

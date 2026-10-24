@@ -223,17 +223,17 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - When switching between existing boards, restore each board's own isolated ruler and camera state without cross-board contamination.
 
 ### Milestone 19: Clear Canvas Action & Undo History Integration
-- [ ] **19.1 Connect Clear Canvas in EraserPopover:**
-  - Fix `handleClearCanvas` in `src/components/toolbar/EraserPopover.tsx`: call `sceneStore.clearEntities()` and update `boardStore.flushSave()`.
-- [ ] **19.2 Undo/Redo Command History Integration:**
-  - Implement `ClearCanvasCommand` in `src/canvas/history.ts` so clearing the canvas can be instantly reversed with `Ctrl+Z` / Undo.
-  - Show a Fluent toast / feedback banner ("Canvas Cleared — Press Ctrl+Z to undo").
+- [x] **19.1 Connect Clear Canvas in EraserPopover:**
+  - Fix `handleClearCanvas` in `src/components/toolbar/EraserPopover.tsx`: clear active selection with `selectionStore.clearSelection()`, call `sceneStore.clearEntities(true)`, immediately flush save to storage via `boardStore.flushSave()`, close popover, and trigger the feedback notification banner with an interactive Undo button.
+- [x] **19.2 Undo/Redo Command History Integration & Fluent Toast Banner:**
+  - Implement dedicated `ClearCanvasCommand` in `src/canvas/history.ts` storing the complete snapshot of cleared entities, ensuring invoking Undo (`Ctrl+Z`, TopBar Undo, or toast Undo button) flawlessly restores all previous canvas entities.
+  - Implement reactive `toastStore` in `src/store/toastStore.ts` and floating Fluent Acrylic toast component in `src/components/common/Toast.tsx` mounted in `src/App.tsx`.
 
 ---
 
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `16.2 TopBar Header Action Pruning (Milestone 16 complete)`
-- **Current Active Sub-Task:** `Milestone 16 Complete, Ready for Milestone 11, 12, 13, 15, 17, 18, or 19`
+- **Last Completed Sub-Task:** `19.2 Undo/Redo Command History Integration & Fluent Toast Banner (Milestone 19 complete)`
+- **Current Active Sub-Task:** `Milestone 19 Complete, Ready for Milestone 11, 12, 13, 15, 17, or 18`
 - **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 12 (Distinct Inking Icons & Tool-Specific Custom Cursors) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`

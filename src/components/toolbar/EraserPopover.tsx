@@ -1,7 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { inkingStore, useInkingStore } from '../../store/inkingStore';
 import type { EraserMode } from '../../store/inkingStore';
 import { DeleteIcon, CheckmarkIcon } from '../../assets/icons';
+import { selectionStore } from '../../store/selectionStore';
+import { sceneStore } from '../../store/sceneStore';
+import { boardStore } from '../../store/boardStore';
+import { toastStore } from '../../store/toastStore';
+import { canvasStore } from '../../store/canvasStore';
 
 interface EraserPopoverProps {
   onClose: () => void;
@@ -10,7 +15,6 @@ interface EraserPopoverProps {
 export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
   const { eraser } = useInkingStore();
-  const [clearedToast, setClearedToast] = useState(false);
 
   useEffect(() => {
     function handlePointerDown(e: MouseEvent) {
@@ -40,12 +44,34 @@ export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
   };
 
   const handleClearCanvas = () => {
-    setClearedToast(true);
-    inkingStore.clearCanvas();
-    setTimeout(() => {
-      setClearedToast(false);
-      onClose();
-    }, 600);
+    // 1. Clear any active lasso or item selection
+    selectionStore.clearSelection();
+
+    const entityCount = sceneStore.getEntityCount();
+
+    // 2. Clear canvas entities with undoable history tracking if entities exist
+    if (entityCount > 0) {
+      sceneStore.clearEntities(true);
+
+      // 3. Immediately persist cleared board state to storage
+      boardStore.flushSave().catch((err) =>
+        console.error('[EraserPopover] Failed to flush save after clearing canvas:', err)
+      );
+
+      // 4. Trigger Fluent feedback toast with interactive Undo button
+      toastStore.show({
+        message: 'Canvas Cleared — Press Ctrl+Z to undo',
+        actionLabel: 'Undo',
+        onAction: () => {
+          canvasStore.triggerUndo();
+        },
+        durationMs: 4500,
+      });
+    }
+
+    // 5. Close popover
+    inkingStore.closePopover();
+    onClose();
   };
 
   return (
@@ -200,8 +226,8 @@ export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
           padding: '8px 10px',
           borderRadius: '6px',
           border: 'none',
-          backgroundColor: clearedToast ? 'rgba(231, 18, 36, 0.15)' : 'transparent',
-          color: clearedToast ? '#E71224' : 'var(--colorNeutralForeground1)',
+          backgroundColor: 'transparent',
+          color: 'var(--colorNeutralForeground1)',
           cursor: 'pointer',
           textAlign: 'left',
           fontSize: '13px',
@@ -213,14 +239,12 @@ export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
           e.currentTarget.style.color = '#E71224';
         }}
         onMouseLeave={(e) => {
-          if (!clearedToast) {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--colorNeutralForeground1)';
-          }
+          e.currentTarget.style.backgroundColor = 'transparent';
+          e.currentTarget.style.color = 'var(--colorNeutralForeground1)';
         }}
       >
         <DeleteIcon size={16} color="currentColor" />
-        <span>{clearedToast ? 'Canvas Cleared!' : 'Clear canvas'}</span>
+        <span>Clear canvas</span>
       </button>
     </div>
   );

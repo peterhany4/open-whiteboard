@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Deterministic Command History & Undo/Redo Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -18,6 +18,31 @@ export interface Command {
   execute: () => void;
   undo: () => void;
   redo?: () => void;
+}
+
+export class ClearCanvasCommand<T = any> implements Command {
+  public id?: string;
+  public name = 'Clear Canvas';
+  private snapshot: T[];
+  private onApply: (entities: T[]) => void;
+
+  constructor(snapshot: T[], onApply: (entities: T[]) => void) {
+    this.id = 'clear-canvas-' + Date.now();
+    this.snapshot = [...snapshot];
+    this.onApply = onApply;
+  }
+
+  public execute() {
+    this.onApply([]);
+  }
+
+  public undo() {
+    this.onApply(this.snapshot);
+  }
+
+  public redo() {
+    this.execute();
+  }
 }
 
 export interface UndoGroup {

@@ -9,6 +9,8 @@ import { BoardGallery } from './components/home';
 import { useBoardStore, boardStore } from './store/boardStore';
 import { shortcutEngine } from './tools/ShortcutEngine';
 
+import { Toast } from './components/common/Toast';
+
 function WhiteboardCanvas() {
   return (
     <div
@@ -44,6 +46,9 @@ function WhiteboardCanvas() {
 
       {/* 5. Bottom-Right Zoom & Dark Mode HUD Pill (Milestone 1.4) */}
       <ZoomHUD />
+
+      {/* 6. Feedback Toast Banner (Milestone 19.2) */}
+      <Toast />
     </div>
   );
 }
