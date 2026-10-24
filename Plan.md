@@ -305,9 +305,35 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 24: Inking Layer Hierarchy (Highlighters Behind Words), Viewport-Centered Ruler & Complete Tool Defaults Reset
+- [ ] **24.1 Highlighters Layer Rendering Behind Words & Text Entities:**
+  - In `src/canvas/CanvasEntities.tsx`:
+    - Separate highlighter strokes from pen strokes into a dedicated background highlight layer (`#highlighterLayerSvg` with `zIndex: 90` rendered beneath text widgets and text containers), while regular pen strokes remain on `#inkLayerSvg` (`zIndex: 200` above widgets).
+    - Apply `mix-blend-mode: multiply` on the highlighter layer and optimize stacking context isolation so that text characters in PDF documents, Sticky Notes, and Text Boxes sit 100% crisp, pure, and untouched on top of the soft pastel highlight without any letter discoloration.
+  - In `src/canvas/CanvasViewport.tsx`:
+    - Update `#liveHighlighterOverlay` to render with `mix-blend-mode: multiply` at the background highlight layer depth so active highlighter inking immediately appears behind the text without obscuring letter glyphs.
+  - In `src/components/canvas/PDFDocumentWidget.tsx`:
+    - Ensure both quick selection highlights and pen highlighter strokes over PDF documents render seamlessly behind printed text vectors and characters.
+- [ ] **24.2 Viewport-Centered Ruler Activation & Toggle:**
+  - In `src/tools/RulerEngine.ts`:
+    - Implement `centerOnCamera(camera, windowWidth, windowHeight)` to compute the world coordinate center of the active camera viewport:
+      $$\text{worldX} = (\text{windowWidth} / 2 - \text{camera.positionX}) / \text{camera.scale}$$
+      $$\text{worldY} = (\text{windowHeight} / 2 - \text{camera.positionY}) / \text{camera.scale}$$
+    - Update `toggle(camera)` and `reset()` so that whenever the ruler is toggled ON without prior on-screen coordinates, it automatically appears centered directly inside the user's visible screen at angle 0° rather than at world `(0, 0)`.
+  - In `src/components/toolbar/InkToolbar.tsx`:
+    - Pass current camera state to `rulerEngine.toggle()` so activating the ruler via the toolbar centers it instantly in the user's view.
+- [ ] **24.3 Complete Inking & Tool Defaults Reset on Pristine Board Creation:**
+  - In `src/store/inkingStore.ts`:
+    - Add `resetToDefaults()` method to restore all pen slots (Pen1–Pen5, PenEffect colors, thicknesses, arrow modes, recent colors), highlighter (default `#FCFC00`, thickness 16), laser (`#E3182D`, thickness 4), eraser (`PointEraser`), active tool (`Select`), and close any open popover.
+  - In `src/store/boardStore.ts`:
+    - In `createNewBoard()`, invoke `inkingStore.resetToDefaults()` so every newly created board starts with pristine factory defaults across all tools, pen colors, sizes, and highlighter settings.
+    - Also invoke `resetToDefaults()` in `deleteBoard()` when all boards are cleared.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
 - **Last Completed Sub-Task:** `23.2 High-Legibility Edge/Acrobat Pastel Highlighter Palette & Opacity Calibration (Milestone 23 complete)`
-- **Current Active Sub-Task:** `Milestone 23 Completed & Verified (All tests pass, clean build)`
-- **Next Recommended Prompt:** `"Ready for next instructions or testing."`
+- **Current Active Sub-Task:** `Drafted Milestone 24 (Highlighters Behind Words, Viewport-Centered Ruler & Inking Defaults Reset) for User Review`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 24 (Inking Layer Hierarchy, Viewport-Centered Ruler & Complete Tool Defaults Reset) sequentially."`
