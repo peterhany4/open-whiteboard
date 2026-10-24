@@ -160,6 +160,11 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 - [x] **11.3 Synchronized Inking & Multi-Page Coordinate Anchoring:**
   - Support inking over any PDF page directly in canvas world coordinates without offset drift, with highlighters blending over document content (`multiply` in Light mode, `screen` in Dark mode).
   - Multi-Page Spatial Anchoring: Extend spatial document anchoring in `SelectionOverlay.tsx` to `pdf_document` entities so translating the document automatically detects and moves all overlapping ink strokes, highlighters, and notes across all pages in lockstep with full Undo/Redo integration.
+- [x] **11.4 Multi-Page Selection, TextLayer Scale Alignment & Non-Blocking Overlay Fix:**
+  - Fixed out-of-sync document bounds by measuring all page aspect ratios up front upon loading the document, immediately updating `height` and `bounds` in `sceneStore` so that `SelectTool` hit-testing and marquee selection accurately enclose all pages.
+  - Eliminated the cancel loop in `PDFPageItem` by decoupling height measurement from page item effects, passing `height` directly as a prop with stable dependencies `[pdfDoc, pageNumber, width]`, ensuring all pages render their canvas and `TextLayer` without cancellation.
+  - Configured required PDF.js v6 CSS variables (`--total-scale-factor`, `--min-font-size`, `--text-scale-factor`) on `.textLayer` in `index.css` and `PDFPageItem` for pixel-accurate font scaling and highlight dimensions.
+  - Set `pointerEvents: 'none'` on `#wb-selection-box` when a PDF document is selected so the selection box does not shield pointer events from the text layer, enabling seamless text selection across all pages while keeping the acrylic header draggable for moving the document.
 
 ### Milestone 12: Distinct Inking Icons & Tool-Specific Custom Cursors
 - [ ] **12.1 Distinct Chisel Highlighter & Refined Pen SVG Icons:**
@@ -236,6 +241,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `11.3 Synchronized Inking & Coordinate Anchoring (Milestone 11 complete)`
+- **Last Completed Sub-Task:** `11.4 Multi-Page Selection, TextLayer Scale Alignment & Non-Blocking Overlay Fix (Milestone 11 complete)`
 - **Current Active Sub-Task:** `Milestone 11 Complete, Ready for Milestone 12, 13, 15, 17, or 18`
 - **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 12 (Distinct Inking Icons & Tool-Specific Custom Cursors) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
