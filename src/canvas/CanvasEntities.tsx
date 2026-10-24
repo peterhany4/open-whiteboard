@@ -74,6 +74,7 @@ import { TextBoxWidget } from '../components/canvas/TextBoxWidget';
 import { ShapeWidget } from '../components/canvas/ShapeWidget';
 import { ReactionWidget } from '../components/canvas/ReactionWidget';
 import { ImageWidget } from '../components/canvas/ImageWidget';
+import { PDFDocumentWidget } from '../components/canvas/PDFDocumentWidget';
 
 export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities }) => {
   const { isDark } = useTheme();
@@ -89,7 +90,7 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
     }
   }
 
-  // Sort otherEntities by zIndex so locked images (zIndex: 50) render first, then unlocked items
+  // Sort otherEntities by zIndex so locked images/documents (zIndex: 50) render first, then unlocked items
   otherEntities.sort((a, b) => (a.zIndex || 100) - (b.zIndex || 100));
 
   // Highlighters (zIndex: 150) render underneath pen strokes (zIndex: 200)
@@ -97,7 +98,7 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
 
   return (
     <>
-      {/* 1. DOM Elements (Locked images, shapes, sticky notes, note grids, text, reactions) */}
+      {/* 1. DOM Elements (Locked images, documents, shapes, sticky notes, note grids, text, reactions) */}
       {otherEntities.map((entity) => {
         switch (entity.type) {
           case 'note':
@@ -112,6 +113,8 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
             return <ReactionWidget key={entity.id} reaction={entity} />;
           case 'image':
             return <ImageWidget key={entity.id} image={entity} />;
+          case 'pdf_document':
+            return <PDFDocumentWidget key={entity.id} document={entity} />;
           default:
             return null;
         }

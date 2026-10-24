@@ -49,3 +49,33 @@ html, body, #root {
     transform: translate(-50%, 0) scale(1);
   }
 }
+
+/* PDF.js Text Layer for Interactive Selection & Copy (Milestone 11.2) */
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 2;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent !important;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 120, 215, 0.35) !important;
+  color: transparent !important;
+}

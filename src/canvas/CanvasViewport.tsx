@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useCanvasStore, canvasStore } from '../store/canvasStore';
 import { useVisibleEntities, sceneStore } from '../store/sceneStore';
 import { selectionStore } from '../store/selectionStore';
@@ -19,11 +19,14 @@ import { RulerWidget } from '../components/canvas/RulerWidget';
 import { SelectionOverlay } from '../components/canvas/SelectionOverlay';
 import { toTransformStyle, screenToWorld } from './camera';
 import type { Point } from './camera';
-import type { CanvasEntity } from './sceneGraph';
+import type { CanvasEntity, PDFDocumentEntity } from './sceneGraph';
 import { GridBackground } from './GridBackground';
 import { CanvasEntities } from './CanvasEntities';
 import { PdfPagePickerModal } from '../components/pdf/PdfPagePickerModal';
 import { historyManager } from './history';
+import * as pdfjsLib from 'pdfjs-dist';
+import { dataUrlToUint8Array } from '../components/canvas/PDFDocumentWidget';
+import { toastStore } from '../store/toastStore';
 
 interface CanvasViewportProps {
   children?: React.ReactNode;
@@ -148,6 +151,80 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
+
+  // Reusable PDF document canvas widget creator (Milestone 11.1)
+  const insertPdfDocument = useCallback((file: File, worldPoint?: Point) => {
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+
+      try {
+        const bytes = dataUrlToUint8Array(dataUrl);
+        const loadingTask = pdfjsLib.getDocument({
+          data: bytes,
+          cMapUrl: 'https://unpkg.com/pdfjs-dist@6.4.299/cmaps/',
+          cMapPacked: true,
+        });
+        const pdfDoc = await loadingTask.promise;
+        const page1 = await pdfDoc.getPage(1);
+        const vp = page1.getViewport({ scale: 1.0 });
+
+        const targetWidth = 600;
+        const targetHeight = Math.round((vp.height / vp.width) * targetWidth) + 36;
+
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const screenCenter = {
+          x: rect ? rect.left + rect.width / 2 : window.innerWidth / 2,
+          y: rect ? rect.top + rect.height / 2 : window.innerHeight / 2,
+        };
+        const insertPt = worldPoint || screenToWorld(screenCenter, camera, rect);
+
+        const timestamp = Date.now();
+        const posX = Math.round(insertPt.x - targetWidth / 2);
+        const posY = Math.round(insertPt.y - targetHeight / 2);
+
+        const docEntity: PDFDocumentEntity = {
+          id: `pdf_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
+          type: 'pdf_document',
+          x: posX,
+          y: posY,
+          width: targetWidth,
+          height: targetHeight,
+          title: file.name || 'PDF Document',
+          pdfData: dataUrl,
+          currentPage: 1,
+          totalPages: pdfDoc.numPages,
+          isLocked: false,
+          zIndex: 100,
+          bounds: {
+            minX: posX,
+            minY: posY,
+            maxX: posX + targetWidth,
+            maxY: posY + targetHeight,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+
+        historyManager.inUndoGroup(`Insert PDF Document: ${file.name}`, () => {
+          sceneStore.addEntity(docEntity, true);
+        });
+        selectionStore.select(docEntity.id);
+        toastStore.show({
+          message: `Inserted "${file.name}" (${pdfDoc.numPages} ${pdfDoc.numPages === 1 ? 'page' : 'pages'})`,
+          durationMs: 3000,
+        });
+      } catch (pdfErr) {
+        console.error('[CanvasViewport] Failed to parse PDF:', pdfErr);
+        toastStore.show({
+          message: 'Failed to parse PDF document.',
+          durationMs: 4000,
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  }, [camera]);
 
   // 3. Object Insertion Listener from Create Flyout (Module 93425)
   useEffect(() => {
@@ -334,11 +411,15 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       }
     }
 
-    // Listen to PDF Picker trigger event
+    // Listen to PDF Picker trigger event: inserts interactive PDF document widget (Milestone 11.1)
     function handleOpenPdf(e: Event) {
-      const customEvent = e as CustomEvent<{ file: File }>;
+      const customEvent = e as CustomEvent<{ file: File; useModal?: boolean }>;
       if (customEvent.detail?.file) {
-        setPdfPickerFile(customEvent.detail.file);
+        if (customEvent.detail.useModal) {
+          setPdfPickerFile(customEvent.detail.file);
+        } else {
+          insertPdfDocument(customEvent.detail.file);
+        }
       }
     }
 
@@ -432,7 +513,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       window.removeEventListener('wb-open-pdf-picker', handleOpenPdf);
       window.removeEventListener('paste', handlePaste);
     };
-  }, [camera]);
+  }, [camera, insertPdfDocument]);
 
   // 4. Pointer Handlers (Panning & Inking Tools: Select, Hand, Pen, Highlighter, Laser, Eraser)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -459,7 +540,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         const isInteractive = Boolean(
           target.closest &&
             target.closest(
-              '#wb-selection-container, #wb-selection-context-menu, [id^="wb-context-"], .wb-selection-action-btn, [id^="wb-note-"], [id^="wb-notegrid-"], [id^="wb-text-"], [id^="wb-shape-"], [id^="wb-reaction-"], [id^="wb-image-"], [id^="wb-grid-"], #whiteboard-ink-toolbar, #create-panel-menu, #wb-create-flyout'
+              '#wb-selection-container, #wb-selection-context-menu, [id^="wb-context-"], .wb-selection-action-btn, [id^="wb-note-"], [id^="wb-notegrid-"], [id^="wb-text-"], [id^="wb-shape-"], [id^="wb-reaction-"], [id^="wb-image-"], [id^="pdf-"], [id^="wb-pdf-"], .wb-pdf-header, .textLayer, [id^="wb-grid-"], #whiteboard-ink-toolbar, #create-panel-menu, #wb-create-flyout'
             )
         );
         if (!isInteractive) {
@@ -688,7 +769,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        setPdfPickerFile(file);
+        insertPdfDocument(file, dropWorld);
         break;
       } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|svg)$/i.test(file.name)) {
         const reader = new FileReader();

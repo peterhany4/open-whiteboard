@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Spatial Scene Graph & Viewport Culling Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -33,7 +33,8 @@ export type CanvasEntityType =
   | 'text'
   | 'shape'
   | 'reaction'
-  | 'image';
+  | 'image'
+  | 'pdf_document';
 
 export interface BaseEntity {
   id: string;
@@ -138,6 +139,20 @@ export interface ImageEntity extends BaseEntity {
   fileName?: string;
 }
 
+export interface PDFDocumentEntity extends BaseEntity {
+  type: 'pdf_document';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  pdfUrl?: string;
+  pdfData: string;
+  currentPage: number;
+  totalPages: number;
+  isLocked?: boolean;
+}
+
 export type CanvasEntity =
   | InkStrokeEntity
   | NoteEntity
@@ -145,7 +160,8 @@ export type CanvasEntity =
   | TextEntity
   | ShapeEntity
   | ReactionEntity
-  | ImageEntity;
+  | ImageEntity
+  | PDFDocumentEntity;
 
 /**
  * Computes bounding box for an inking stroke, including stroke thickness padding.
@@ -213,6 +229,7 @@ export function computeEntityBounds(entity: CanvasEntity): AABB {
     case 'text':
     case 'shape':
     case 'image':
+    case 'pdf_document':
       return computeBoxBounds(entity.x, entity.y, entity.width, entity.height);
     case 'reaction':
       return computeBoxBounds(entity.x, entity.y, entity.size, entity.size);

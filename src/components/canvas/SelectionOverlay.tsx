@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Fluent Selection Bounding Box & Context Overlay
  *
  * Reverse-Engineered from REA Evidence:
@@ -13,7 +13,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSelectionStore, selectionStore } from '../../store/selectionStore';
 import { sceneStore } from '../../store/sceneStore';
 import { historyManager } from '../../canvas/history';
-import type { CanvasEntity, InkStrokeEntity, NoteEntity, NoteGridEntity, TextEntity, ShapeEntity, ReactionEntity, ImageEntity, AABB } from '../../canvas/sceneGraph';
+import type { CanvasEntity, InkStrokeEntity, NoteEntity, NoteGridEntity, TextEntity, ShapeEntity, ReactionEntity, ImageEntity, PDFDocumentEntity, AABB } from '../../canvas/sceneGraph';
 import { useCanvasStore } from '../../store/canvasStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { lassoTool } from '../../tools/LassoTool';
@@ -95,22 +95,24 @@ export const SelectionOverlay: React.FC = () => {
       const selectedIds = new Set(currentEntities.map((e) => e.id));
       const entitiesToMove: CanvasEntity[] = [...currentEntities];
 
-      // Spatial Document Anchoring: Moving an unlocked PDF page or image automatically translates
+      // Spatial Document Anchoring: Moving an unlocked PDF document or image automatically translates
       // all overlapping ink strokes, highlighters, and sticky notes positioned on top of it.
-      const imagesInSelection = currentEntities.filter((e) => e.type === 'image') as ImageEntity[];
-      if (imagesInSelection.length > 0) {
+      const docsInSelection = currentEntities.filter(
+        (e) => e.type === 'image' || e.type === 'pdf_document'
+      ) as (ImageEntity | PDFDocumentEntity)[];
+      if (docsInSelection.length > 0) {
         for (const sceneItem of allScene) {
           if (selectedIds.has(sceneItem.id) || sceneItem.isLocked) continue;
           const b = sceneItem.bounds;
           const centerX = (b.minX + b.maxX) / 2;
           const centerY = (b.minY + b.maxY) / 2;
 
-          const isAnchored = imagesInSelection.some(
-            (img) =>
-              centerX >= img.x &&
-              centerX <= img.x + img.width &&
-              centerY >= img.y &&
-              centerY <= img.y + img.height
+          const isAnchored = docsInSelection.some(
+            (doc) =>
+              centerX >= doc.x &&
+              centerX <= doc.x + doc.width &&
+              centerY >= doc.y &&
+              centerY <= doc.y + doc.height
           );
 
           if (isAnchored) {
@@ -460,7 +462,9 @@ export const SelectionOverlay: React.FC = () => {
 
   const handleToggleLock = useCallback(() => {
     const selected = selectionStore.getSelectedEntities();
-    const isAnyUnlocked = selected.some((e) => !e.isLocked && !(e.type === 'image' && (e as any).isLockedToBackground));
+    const isAnyUnlocked = selected.some(
+      (e) => !e.isLocked && !(e.type === 'image' && (e as any).isLockedToBackground)
+    );
     const targetLock = isAnyUnlocked;
 
     historyManager.inUndoGroup(targetLock ? 'Lock to Background' : 'Unlock Objects', () => {
@@ -471,6 +475,15 @@ export const SelectionOverlay: React.FC = () => {
             {
               isLocked: targetLock,
               isLockedToBackground: targetLock,
+              zIndex: targetLock ? 50 : 100,
+            },
+            true
+          );
+        } else if (e.type === 'pdf_document') {
+          sceneStore.updateEntity(
+            e.id,
+            {
+              isLocked: targetLock,
               zIndex: targetLock ? 50 : 100,
             },
             true

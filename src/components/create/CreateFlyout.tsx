@@ -648,7 +648,7 @@ export const CreateFlyout: React.FC = () => {
                 <DocumentPDFIcon size={32} color="#E71224" />
                 <span style={{ fontSize: '13px', fontWeight: 600 }}>Insert Local PDF Document</span>
                 <span style={{ fontSize: '11px', color: 'var(--colorNeutralForeground3)' }}>
-                  Annotate PDF pages directly on canvas
+                  Interactive multi-page viewer with text selection & inking
                 </span>
               </button>
               <input

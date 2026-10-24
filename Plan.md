@@ -149,15 +149,15 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Ensure titlebars support double-clicking to toggle maximize/restore.
 
 ### Milestone 11: Interactive Canvas PDF Document Viewer (Scroll, Select, Copy & Ink Anchoring)
-- [ ] **11.1 Embedded PDF Document Canvas Entity & Renderer:**
-  - Create `PDFDocumentEntity` in `src/canvas/sceneGraph.ts` with `{ id, type: 'pdf_document', x, y, width, height, pdfUrl, pdfData, currentPage, totalPages, isLocked, isPinned }`.
-  - Implement `src/components/canvas/PDFDocumentWidget.tsx`: render high-DPI PDF pages using `pdfjs-dist` with multi-page continuous vertical scroll or page-flip navigation bar.
-- [ ] **11.2 Selectable & Copyable PDF.js Text Layer:**
+- [x] **11.1 Embedded PDF Document Canvas Entity & Renderer:**
+  - Create `PDFDocumentEntity` in `src/canvas/sceneGraph.ts` with `{ id, type: 'pdf_document', x, y, width, height, title, pdfUrl, pdfData, currentPage, totalPages, isLocked, zIndex, bounds }`.
+  - Implement `src/components/canvas/PDFDocumentWidget.tsx`: render high-DPI PDF pages using `pdfjs-dist` with multi-page continuous vertical scroll or page-flip navigation bar, quick page jump input, and fit width toggle.
+- [x] **11.2 Selectable & Copyable PDF.js Text Layer:**
   - Embed transparent PDF.js `textLayer` overlay aligned with rendered PDF canvas coordinates.
-  - Enable native text selection, clipboard copy (`Ctrl+C`), and sentence highlighting when the `Select` tool is active.
-- [ ] **11.3 Synchronized Inking & Coordinate Anchoring:**
-  - Support inking over the PDF document: while in Pen, Highlighter, or Laser mode, pointer events draw directly on top of the document.
-  - Anchor ink strokes to document world coordinates so scrolling or translating the PDF automatically keeps all notes and highlighters perfectly in place.
+  - Enable native text selection, clipboard copy (`Ctrl+C`), and sentence highlighting when the `Select` tool is active, with tool-mode isolation during inking.
+- [x] **11.3 Synchronized Inking & Coordinate Anchoring:**
+  - Support inking over the PDF document: while in Pen, Highlighter, or Laser mode, pointer events draw directly on top of the document without offset drift.
+  - Anchor ink strokes to document world coordinates in `SelectionOverlay.tsx` so translating the PDF automatically keeps all notes and highlighters perfectly in lockstep.
 
 ### Milestone 12: Distinct Inking Icons & Tool-Specific Custom Cursors
 - [ ] **12.1 Distinct Chisel Highlighter & Refined Pen SVG Icons:**
@@ -234,6 +234,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `19.2 Undo/Redo Command History Integration & Fluent Toast Banner (Milestone 19 complete)`
-- **Current Active Sub-Task:** `Milestone 19 Complete, Ready for Milestone 11, 12, 13, 15, 17, or 18`
+- **Last Completed Sub-Task:** `11.3 Synchronized Inking & Coordinate Anchoring (Milestone 11 complete)`
+- **Current Active Sub-Task:** `Milestone 11 Complete, Ready for Milestone 12, 13, 15, 17, or 18`
 - **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 12 (Distinct Inking Icons & Tool-Specific Custom Cursors) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
