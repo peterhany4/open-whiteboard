@@ -331,9 +331,34 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 25: Custom Vector Selection Overlay, In-Page Highlight Annotations & Granular Undo History
+- [ ] **25.1 Custom Vector Text Selection Overlay (Acrobat / Google Docs Architecture):**
+  - In `src/index.css`:
+    - Set `.textLayer ::selection, .textLayer span::selection { background: transparent !important; color: transparent !important; -webkit-text-fill-color: transparent !important; }`.
+    - Completely hide native Chromium selection background to prevent Chromium from forcibly overdrawing text characters with fallback system fonts.
+  - In `src/components/canvas/PDFDocumentWidget.tsx`:
+    - Implement an in-page vector selection overlay rendering Fluent translucent blue boxes (`rgba(0, 120, 215, 0.22)`) over the active selection range rects.
+    - Completely eliminate double-letter artifacts and kerning mismatches while keeping native selection, double-click word selection, and clipboard copy (`Ctrl+C`) 100% functional.
+- [ ] **25.2 Structured Page-Relative Highlight Annotations (Acrobat / Edge Standard):**
+  - In `src/canvas/sceneGraph.ts`:
+    - Define `PDFHighlightAnnotation` interface (`id`, `pageNumber`, `color`, `rects: { relX, relY, width, height }[]`, `createdAt`).
+    - Add `highlights?: PDFHighlightAnnotation[]` to `PDFDocumentEntity`.
+  - In `src/components/canvas/PDFDocumentWidget.tsx`:
+    - In `PDFPageItem`, render `<svg className="wb-pdf-page-highlights">` positioned directly between the PDF page canvas and the selectable text layer (`zIndex: 1`, beneath `.textLayer` at `zIndex: 2`) with `mix-blend-mode: multiply`.
+    - Ensure highlights are physically underneath the text layer, guaranteeing pure vector black text glyphs with zero discoloration.
+    - Because highlights are page-relative child elements of the page card, they move, lock, and scale (600px ↔ 900px) natively with the PDF document with zero offset or drift.
+    - Support freehand highlighter drawing over PDF pages by mapping intersecting strokes into page-relative highlight annotations.
+- [ ] **25.3 Granular One-by-One Undo/Redo (Ctrl+Z / Ctrl+Y) for PDF Highlights:**
+  - In `src/components/canvas/PDFDocumentWidget.tsx`:
+    - Fix highlight history recording so each highlight addition records an isolated, granular command in `historyManager` (`execute: addHighlight`, `undo: removeHighlight`).
+    - Ensure pressing `Ctrl+Z` removes **strictly the last highlight added**, never wiping out all prior highlights on the document.
+    - Support full one-by-one redo (`Ctrl+Y`).
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
 - **Last Completed Sub-Task:** `24.3 Complete Inking & Tool Defaults Reset on Pristine Board Creation (Milestone 24 complete)`
-- **Current Active Sub-Task:** `Milestone 24 Completed & Verified (All tests pass, clean build)`
-- **Next Recommended Prompt:** `"Ready for next instructions or testing."`
+- **Current Active Sub-Task:** `Drafted Milestone 25 (Custom Vector Selection, In-Page Highlight Annotations & Granular Undo) for User Review`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 25 (Custom Vector Selection Overlay, In-Page Highlight Annotations & Granular Undo History) sequentially."`
