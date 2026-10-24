@@ -21,6 +21,7 @@ import {
 import { PenPopover } from './PenPopover';
 import { EraserPopover } from './EraserPopover';
 import { rulerEngine } from '../../tools/RulerEngine';
+import { canvasStore } from '../../store/canvasStore';
 
 export const InkToolbar: React.FC = () => {
   const state = useInkingStore();
@@ -40,7 +41,8 @@ export const InkToolbar: React.FC = () => {
 
   const handleToolClick = (tool: InkingTool) => {
     if (tool === 'Ruler') {
-      rulerEngine.toggle();
+      const camera = canvasStore.getState().camera;
+      rulerEngine.toggle(camera);
       return;
     }
 

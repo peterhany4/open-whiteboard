@@ -1098,7 +1098,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
             />
           )}
 
-          {/* 1. Real-Time Live Highlighter Inking Preview */}
+          {/* 1. Real-Time Live Highlighter Inking Preview (zIndex: 90 behind text/widgets) */}
           {liveHighlighter && (
             <svg
               id="liveHighlighterOverlay"
@@ -1110,7 +1110,8 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
                 height: '100%',
                 overflow: 'visible',
                 pointerEvents: 'none',
-                zIndex: 250,
+                zIndex: 90,
+                mixBlendMode: isDark ? 'screen' : 'multiply',
               }}
             >
               <path
@@ -1121,9 +1122,6 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
                 strokeLinecap="square"
                 strokeLinejoin="bevel"
                 opacity={isDark ? 0.55 : 0.38}
-                style={{
-                  mixBlendMode: isDark ? 'screen' : 'multiply',
-                }}
               />
             </svg>
           )}

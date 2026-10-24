@@ -333,8 +333,7 @@ class BoardStore {
         rulerEngine.reset(0, 0, 0, false);
         historyManager.clear();
         selectionStore.clearSelection();
-        inkingStore.selectTool('Select');
-        inkingStore.closePopover();
+        inkingStore.resetToDefaults();
         localStorage.removeItem(LAST_ACTIVE_KEY);
         this.setState({
           boards: [],
@@ -434,8 +433,7 @@ class BoardStore {
     rulerEngine.reset(0, 0, 0, false);
     historyManager.clear();
     selectionStore.clearSelection();
-    inkingStore.selectTool('Select');
-    inkingStore.closePopover();
+    inkingStore.resetToDefaults();
 
     const emptyThumbnail = await ExportEngine.generateThumbnail([]);
 
@@ -686,8 +684,7 @@ class BoardStore {
       rulerEngine.reset(0, 0, 0, false);
       historyManager.clear();
       selectionStore.clearSelection();
-      inkingStore.selectTool('Select');
-      inkingStore.closePopover();
+      inkingStore.resetToDefaults();
       localStorage.removeItem(LAST_ACTIVE_KEY);
 
       this.setState({

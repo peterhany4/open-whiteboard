@@ -344,6 +344,19 @@ export const inkingStore = {
     };
     emitChange();
   },
+
+  resetToDefaults: () => {
+    currentState = {
+      ...initialInkingState,
+      pens: JSON.parse(JSON.stringify(initialInkingState.pens)),
+      highlighter: { ...initialInkingState.highlighter },
+      laser: { ...initialInkingState.laser },
+      eraser: { ...initialInkingState.eraser },
+      activePopover: null,
+      isRulerActive: false,
+    };
+    emitChange();
+  },
 };
 
 /**

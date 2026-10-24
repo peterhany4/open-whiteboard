@@ -995,7 +995,7 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
         top: `${docEntity.y}px`,
         width: `${docEntity.width}px`,
         height: `${docEntity.height}px`,
-        zIndex: isLocked ? 50 : (docEntity.zIndex || 100),
+        zIndex: isLocked ? 50 : (docEntity.zIndex ? Math.min(docEntity.zIndex, 80) : 70),
         borderRadius: '8px',
         boxShadow: isSelected
           ? '0 0 0 2px var(--themePrimary), var(--shadow16, 0 8px 24px rgba(0,0,0,0.18))'

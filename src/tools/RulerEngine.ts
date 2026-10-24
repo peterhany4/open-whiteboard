@@ -57,8 +57,33 @@ class RulerEngine {
     }
   }
 
-  public toggle() {
-    this.state.isActive = !this.state.isActive;
+  /**
+   * Centers the ruler inside the current camera viewport in world coordinates
+   */
+  public centerOnCamera(
+    camera?: { positionX: number; positionY: number; scale: number },
+    windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200,
+    windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+  ) {
+    if (!camera) return;
+    const worldX = Math.round((windowWidth / 2 - camera.positionX) / camera.scale);
+    const worldY = Math.round((windowHeight / 2 - camera.positionY) / camera.scale);
+    this.state.x = worldX;
+    this.state.y = worldY;
+    this.state.angle = 0;
+    this.notify();
+  }
+
+  public toggle(
+    camera?: { positionX: number; positionY: number; scale: number },
+    windowWidth?: number,
+    windowHeight?: number
+  ) {
+    const nextActive = !this.state.isActive;
+    this.state.isActive = nextActive;
+    if (nextActive && camera) {
+      this.centerOnCamera(camera, windowWidth, windowHeight);
+    }
     inkingStore.setRulerActive(this.state.isActive);
     this.notify();
   }
@@ -72,11 +97,24 @@ class RulerEngine {
   }
 
   /**
-   * Resets ruler to pristine default state (hidden, 0° angle, centered at origin)
+   * Resets ruler to pristine default state (hidden, 0° angle, centered at origin or camera)
    */
-  public reset(x = 0, y = 0, angle = 0, isVisible = false) {
-    this.state.x = x;
-    this.state.y = y;
+  public reset(
+    x = 0,
+    y = 0,
+    angle = 0,
+    isVisible = false,
+    camera?: { positionX: number; positionY: number; scale: number }
+  ) {
+    if (camera) {
+      const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+      this.state.x = Math.round((windowWidth / 2 - camera.positionX) / camera.scale);
+      this.state.y = Math.round((windowHeight / 2 - camera.positionY) / camera.scale);
+    } else {
+      this.state.x = x;
+      this.state.y = y;
+    }
     this.state.angle = angle;
     this.state.isActive = isVisible;
     inkingStore.setRulerActive(isVisible);

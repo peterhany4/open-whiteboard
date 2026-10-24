@@ -78,13 +78,19 @@ import { PDFDocumentWidget } from '../components/canvas/PDFDocumentWidget';
 
 export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities }) => {
   const { isDark } = useTheme();
-  // Separate strokes to render inside a single top-level SVG for optimal GPU performance
-  const strokes: InkStrokeEntity[] = [];
+  // Separate highlighters (rendered underneath text/widgets) from foreground pen strokes
+  const highlighterStrokes: InkStrokeEntity[] = [];
+  const penStrokes: InkStrokeEntity[] = [];
   const otherEntities: CanvasEntity[] = [];
 
   for (const entity of entities) {
     if (entity.type === 'stroke') {
-      strokes.push(entity);
+      const stroke = entity as InkStrokeEntity;
+      if (stroke.isHighlighter || stroke.tool === 'highlighter') {
+        highlighterStrokes.push(stroke);
+      } else {
+        penStrokes.push(stroke);
+      }
     } else {
       otherEntities.push(entity);
     }
@@ -93,12 +99,33 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
   // Sort otherEntities by zIndex so locked images/documents (zIndex: 50) render first, then unlocked items
   otherEntities.sort((a, b) => (a.zIndex || 100) - (b.zIndex || 100));
 
-  // Highlighters (zIndex: 150) render underneath pen strokes (zIndex: 200)
-  strokes.sort((a, b) => (a.zIndex || 200) - (b.zIndex || 200));
+  penStrokes.sort((a, b) => (a.zIndex || 200) - (b.zIndex || 200));
 
   return (
     <>
-      {/* 1. DOM Elements (Locked images, documents, shapes, sticky notes, note grids, text, reactions) */}
+      {/* 1. Background Vector Highlighter Layer (Rendered beneath text widgets, zIndex: 90) */}
+      {highlighterStrokes.length > 0 && (
+        <svg
+          id="highlighterLayerSvg"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            overflow: 'visible',
+            pointerEvents: 'none',
+            zIndex: 90,
+            mixBlendMode: isDark ? 'screen' : 'multiply',
+          }}
+        >
+          {highlighterStrokes.map((stroke) => (
+            <RenderStroke key={stroke.id} stroke={stroke} isDark={isDark} />
+          ))}
+        </svg>
+      )}
+
+      {/* 2. DOM Elements (Locked images, documents, shapes, sticky notes, note grids, text, reactions) */}
       {otherEntities.map((entity) => {
         switch (entity.type) {
           case 'note':
@@ -120,8 +147,8 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
         }
       })}
 
-      {/* 2. Vector Ink Layer (All visible ink strokes, zIndex: 150 above locked images) */}
-      {strokes.length > 0 && (
+      {/* 3. Foreground Vector Pen Layer (Pen strokes, zIndex: 200 above widgets) */}
+      {penStrokes.length > 0 && (
         <svg
           id="inkLayerSvg"
           style={{
@@ -132,7 +159,7 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
             height: '100%',
             overflow: 'visible',
             pointerEvents: 'none',
-            zIndex: 150,
+            zIndex: 200,
           }}
         >
           <defs>
@@ -151,7 +178,7 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
               <stop offset="100%" stopColor="#E1B12C" />
             </linearGradient>
           </defs>
-          {strokes.map((stroke) => (
+          {penStrokes.map((stroke) => (
             <RenderStroke key={stroke.id} stroke={stroke} isDark={isDark} />
           ))}
         </svg>
