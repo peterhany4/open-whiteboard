@@ -178,12 +178,8 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
     - **Eraser**: Polish dynamic circular ring matching current velocity eraser radius.
 
 ### Milestone 13: Laser Pointer Active Tracking Cursor & Trail Glow Physics (REA Trace)
-- [ ] **13.1 Active Hover Tracking Laser Focal Bead:**
-  - Update `src/tools/LaserTool.ts` and `src/canvas/CanvasViewport.tsx` so the laser pointer never disappears when idle.
-  - Render an active glowing laser focal point at pointer coordinates on hover, using authentic Fluent radial glow (`feGaussianBlur`, bright core `#FFFFFF`, outer saturated neon halo).
-- [ ] **13.2 Ribbon Trail Drag Physics & Decaying Animation Sync:**
-  - Interpolate pointer micro-batches into smooth ribbons with spring physics on pointer drag.
-  - Maintain smooth 60fps decay tail (`requestAnimationFrame`) with automatic fade-out when pointer stops.
+- [x] **13.1 & 13.2 (Retained & Settled in Milestone 12):**
+  - Retained the responsive, instant 1:1 single-path laser trail with 3-pass Fluent glow (`feGaussianBlur` neon blur halo, bright neon core, white center highlight, leading focal bead, and 60fps decay animation loop over 1000ms with smoothstep easing) and live hover bead from Milestone 12.2.
 
 ### Milestone 14: Dynamic Theme Paper Color & High-Contrast Grid Patterns
 - [x] **14.1 Automatic Mode-Driven Canvas Surface & Palette Cleanup:**
