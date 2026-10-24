@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — High-Resolution Board Export Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -315,6 +315,14 @@ export class ExportEngine {
         }
         if (shape.fillColor !== 'transparent') ctx.fill();
         ctx.stroke();
+
+        if (shape.text) {
+          ctx.font = `${shape.fontSize || 15}px system-ui, -apple-system, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = shape.textColor || (bgMode === 'dark' ? '#FFFFFF' : '#1F1F1F');
+          ctx.fillText(shape.text, x + w / 2, y + h / 2);
+        }
         break;
       }
 
@@ -491,6 +499,11 @@ export class ExportEngine {
           svgElements += `<rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}" fill="${shape.fillColor}" stroke="${shape.strokeColor}" stroke-width="${shape.strokeWidth}" />\n`;
         } else if (shape.shapeType === 'circle') {
           svgElements += `<ellipse cx="${shape.x + shape.width / 2}" cy="${shape.y + shape.height / 2}" rx="${shape.width / 2}" ry="${shape.height / 2}" fill="${shape.fillColor}" stroke="${shape.strokeColor}" stroke-width="${shape.strokeWidth}" />\n`;
+        }
+        if (shape.text) {
+          const escaped = shape.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const fontColor = shape.textColor || (bgMode === 'dark' ? '#FFFFFF' : '#1F1F1F');
+          svgElements += `<text x="${shape.x + shape.width / 2}" y="${shape.y + shape.height / 2 + 5}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="${shape.fontSize || 15}" fill="${fontColor}">${escaped}</text>\n`;
         }
       }
     }

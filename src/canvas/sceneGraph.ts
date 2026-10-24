@@ -116,6 +116,9 @@ export interface ShapeEntity extends BaseEntity {
   strokeColor: string;
   fillColor: string;
   strokeWidth: number;
+  text?: string;
+  fontSize?: number;
+  textColor?: string;
 }
 
 export type ReactionKind = 'like' | 'heart' | 'check' | 'question' | 'celebrate';

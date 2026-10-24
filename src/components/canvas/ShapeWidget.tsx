@@ -1,16 +1,19 @@
-﻿/**
+/**
  * Open Whiteboard — Geometric Shapes & Connectors Widget
  *
  * Reverse-Engineered from REA Evidence:
  * - Evidence ID: ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de
  * - Source Modules:
  *   - Module 93425 (chunks/93425.*.js, line 67): u.Y.Shape (Rectangle, Circle, Diamond, Triangle, Parallelogram, Arrow, Line)
- *   - Module 8854: Shape bounding box calculations and connector anchor snapping
+ *   - Module 8854: Shape bounding box calculations, text auto-fit, and connector anchor snapping
  */
 
-import React, { useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ShapeEntity } from '../../canvas/sceneGraph';
+import { sceneStore } from '../../store/sceneStore';
 import { selectionStore, useSelectionStore } from '../../store/selectionStore';
+import { useInkingStore } from '../../store/inkingStore';
+import { useTheme } from '../../theme/ThemeProvider';
 
 interface ShapeWidgetProps {
   shape: ShapeEntity;
@@ -19,24 +22,121 @@ interface ShapeWidgetProps {
 export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
   const { isSelected } = useSelectionStore();
   const selected = isSelected(shape.id);
+  const { selectedTool } = useInkingStore();
+  const { isDark } = useTheme();
+
+  const isSelectTool = selectedTool === 'Select';
+  const isLineOrArrow = shape.shapeType === 'line' || shape.shapeType === 'arrow';
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [text, setText] = useState(shape.text || '');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync state if external changes occur (undo/redo)
+  useEffect(() => {
+    setText(shape.text || '');
+  }, [shape.text]);
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isSelectTool || isLineOrArrow) return;
+      e.stopPropagation();
+      setIsEditing(true);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.select();
+      }, 30);
+    },
+    [isSelectTool, isLineOrArrow]
+  );
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (!isSelectTool) return;
       e.stopPropagation();
       const isAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
       if (isAdditive && selected) {
         selectionStore.deselect(shape.id);
       } else {
         selectionStore.select(shape.id, isAdditive);
+        // If already selected and clicked again, activate inline editing
+        if (selected && !isEditing && !isLineOrArrow) {
+          setIsEditing(true);
+          setTimeout(() => {
+            textareaRef.current?.focus();
+            textareaRef.current?.select();
+          }, 30);
+        }
       }
     },
-    [shape.id, selected]
+    [shape.id, selected, isSelectTool, isEditing, isLineOrArrow]
   );
+
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      setText(val);
+      sceneStore.updateEntity(shape.id, { text: val }, false);
+    },
+    [shape.id]
+  );
+
+  const handleBlur = useCallback(() => {
+    setIsEditing(false);
+    if (text !== (shape.text || '')) {
+      sceneStore.updateEntity(shape.id, { text }, true);
+    }
+  }, [shape.id, shape.text, text]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Escape') {
+        textareaRef.current?.blur();
+      }
+    },
+    []
+  );
+
+  // Allow typing directly when shape is selected in Select mode
+  useEffect(() => {
+    if (!selected || isEditing || !isSelectTool || isLineOrArrow) return;
+
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      if (e.key.length === 1 || e.key === 'Enter') {
+        setIsEditing(true);
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            if (e.key !== 'Enter' && !text) {
+              setText(e.key);
+              sceneStore.updateEntity(shape.id, { text: e.key }, false);
+            }
+          }
+        }, 20);
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [selected, isEditing, isSelectTool, isLineOrArrow, shape.id, text]);
 
   const { width, height, shapeType, strokeColor, fillColor, strokeWidth } = shape;
   const sw = strokeWidth || 2;
   const stroke = strokeColor || '#0078D4';
   const fill = fillColor || 'transparent';
+
+  // Contrast calculation for embedded text
+  const textColor = shape.textColor || (isDark ? '#FFFFFF' : '#1F1F1F');
+
+  // Padding to ensure text stays comfortably within geometric curves
+  const textPaddingX = Math.max(12, width * (shapeType === 'circle' || shapeType === 'diamond' ? 0.22 : 0.1));
+  const textPaddingY = Math.max(8, height * (shapeType === 'circle' || shapeType === 'diamond' ? 0.22 : 0.1));
 
   const renderShapeGeometry = () => {
     switch (shapeType) {
@@ -160,12 +260,17 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
     { x: 0, y: height / 2 },
   ];
 
+  // Tool-Mode Isolation: Only accept pointer events and show pointer cursor when Select tool is active!
+  const containerCursor = isSelectTool ? (isEditing ? 'text' : 'pointer') : 'inherit';
+  const containerPointerEvents = isSelectTool ? 'auto' : 'none';
+
   return (
     <div
       id={`wb-shape-${shape.id}`}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onPointerDown={(e) => {
-        if (e.button === 0) e.stopPropagation();
+        if (isSelectTool && e.button === 0) e.stopPropagation();
       }}
       style={{
         position: 'absolute',
@@ -173,9 +278,9 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
         top: `${shape.y}px`,
         width: `${width}px`,
         height: `${height}px`,
-        cursor: 'pointer',
-        pointerEvents: 'auto',
-        userSelect: 'none',
+        cursor: containerCursor,
+        pointerEvents: containerPointerEvents,
+        userSelect: isEditing ? 'text' : 'none',
         zIndex: shape.zIndex,
       }}
     >
@@ -184,8 +289,12 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
           overflow: 'visible',
           display: 'block',
+          pointerEvents: 'none',
         }}
       >
         {renderShapeGeometry()}
@@ -204,6 +313,74 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
             />
           ))}
       </svg>
+
+      {/* Internal Text Layer / Centered Textarea */}
+      {!isLineOrArrow && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: `${textPaddingY}px ${textPaddingX}px`,
+            boxSizing: 'border-box',
+            pointerEvents: isSelectTool ? 'auto' : 'none',
+          }}
+        >
+          {isEditing ? (
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleTextChange}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              placeholder="Type here..."
+              style={{
+                width: '100%',
+                maxHeight: '100%',
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                resize: 'none',
+                color: textColor,
+                fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+                fontSize: `${shape.fontSize || 15}px`,
+                fontWeight: 500,
+                lineHeight: '1.4',
+                textAlign: 'center',
+                overflow: 'hidden',
+                cursor: 'text',
+                padding: 0,
+                margin: 0,
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: '100%',
+                maxHeight: '100%',
+                color: text ? textColor : 'var(--colorNeutralForeground4)',
+                fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+                fontSize: `${shape.fontSize || 15}px`,
+                fontWeight: 500,
+                lineHeight: '1.4',
+                textAlign: 'center',
+                wordBreak: 'break-word',
+                overflow: 'hidden',
+                whiteSpace: 'pre-wrap',
+                userSelect: 'none',
+                pointerEvents: 'none',
+              }}
+            >
+              {text || (selected && isSelectTool ? 'Double-click to type' : '')}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -431,6 +431,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       if (entity) {
         sceneStore.addEntity(entity, true);
         if (!entity.isLocked && !(entity.type === 'image' && (entity as any).isLockedToBackground)) {
+          inkingStore.selectTool('Select');
           selectionStore.select(entity.id);
         }
       }
@@ -705,7 +706,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       const isOverFloatingUI = Boolean(
         target.closest &&
           target.closest(
-            '#whiteboard-ink-toolbar, .wb-topbar, #topbar, .wb-acrylic-topbar, .wb-pdf-header, .wb-modal-overlay, #create-panel-menu, #wb-create-flyout, #wb-selection-context-menu, [id^="wb-context-"], .wb-selection-action-btn, .wb-color-picker-popover, #wb-selection-container button, [id^="wb-note-"] textarea, [id^="wb-text-"] textarea'
+            '#whiteboard-ink-toolbar, .wb-topbar, #topbar, .wb-acrylic-topbar, .wb-pdf-header, .wb-modal-overlay, #create-panel-menu, #wb-create-flyout, #wb-selection-context-menu, [id^="wb-context-"], .wb-selection-action-btn, .wb-color-picker-popover, #wb-selection-container button, [id^="wb-note-"] textarea, [id^="wb-text-"] textarea, [id^="wb-shape-"] textarea'
           )
       );
 
