@@ -97,21 +97,15 @@ Packaged binaries will be located in the `release/` directory.
 
 | Shortcut | Action |
 | :--- | :--- |
-| `V` / `S` | Select Tool (default cursor) |
-| `H` | Hand / Pan Tool |
-| `P` / `1`–`5` | Pen Tool (Slots 1 to 5) |
-| `X` | Highlighter Tool |
-| `E` | Eraser Tool |
-| `L` | Freeform Lasso Tool |
-| `R` | Toggle Interactive Ruler |
-| `N` | Insert Sticky Note |
-| `T` | Insert Text Box |
+| `Alt+W` | Pen Tool |
+| `Alt+X` | Eraser Tool |
+| `Ctrl + +` | Zoom In |
+| `Ctrl + -` | Zoom Out |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
 | `Ctrl+D` | Duplicate Selected Objects |
 | `Delete` / `Backspace` | Delete Selected Objects |
 | `Ctrl+A` | Select All Objects |
 | `Escape` | Clear Selection / Return to Select Tool |
-| `+` / `-` / `Ctrl+0` | Zoom In / Zoom Out / Reset Zoom (100%) |
 
 ---
 

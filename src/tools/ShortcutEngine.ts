@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Global Keyboard Shortcuts Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -13,7 +13,6 @@ import { inkingStore } from '../store/inkingStore';
 import { canvasStore } from '../store/canvasStore';
 import { selectionStore } from '../store/selectionStore';
 import { boardStore } from '../store/boardStore';
-import { rulerEngine } from './RulerEngine';
 
 export interface ShortcutDefinition {
   key: string;
@@ -86,13 +85,6 @@ export class ShortcutEngine {
         return;
       }
 
-      // Zoom Reset: Ctrl+0
-      if (key === '0') {
-        e.preventDefault();
-        canvasStore.resetZoom();
-        return;
-      }
-
       // Zoom In: Ctrl++ or Ctrl+=
       if (e.key === '=' || e.key === '+') {
         e.preventDefault();
@@ -107,122 +99,30 @@ export class ShortcutEngine {
         return;
       }
 
-      // Ruler Toggle: Ctrl+R (or Alt+R)
-      if (key === 'r') {
-        e.preventDefault();
-        rulerEngine.toggle();
-        return;
-      }
-
       // Allow browser shortcuts like Ctrl+Shift+I / Ctrl+P to proceed without interference
       return;
     }
 
-    // 4. Ignore other modifier combinations like Alt
+    // 4. Ergonomic Alt-key shortcuts (Alt+W for Pen 1, Alt+X for Eraser)
     if (e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'w' || e.code === 'KeyW') {
+        e.preventDefault();
+        inkingStore.selectPen('Pen1');
+        return;
+      }
+      if (key === 'x' || e.code === 'KeyX') {
+        e.preventDefault();
+        inkingStore.setSelectedTool('Eraser');
+        return;
+      }
       return;
     }
 
-    // 5. Single-key shortcuts
+    // 5. Allowed Single-key shortcuts (Delete/Backspace, Escape)
     const key = e.key.toLowerCase();
 
     switch (key) {
-      // Navigation Tools
-      case 'v':
-      case 's':
-        e.preventDefault();
-        inkingStore.selectTool('Select');
-        break;
-
-      case 'h':
-        e.preventDefault();
-        inkingStore.selectTool('Hand');
-        break;
-
-      // Inking Pens
-      case 'p': {
-        e.preventDefault();
-        const lastPen = inkingStore.getState().lastSelectedPenSlot || 'Pen1';
-        inkingStore.selectTool(lastPen);
-        break;
-      }
-
-      case '1':
-        e.preventDefault();
-        inkingStore.selectTool('Pen1');
-        break;
-      case '2':
-        e.preventDefault();
-        inkingStore.selectTool('Pen2');
-        break;
-      case '3':
-        e.preventDefault();
-        inkingStore.selectTool('Pen3');
-        break;
-      case '4':
-        e.preventDefault();
-        inkingStore.selectTool('Pen4');
-        break;
-      case '5':
-        e.preventDefault();
-        inkingStore.selectTool('PenEffect');
-        break;
-
-      // Inking Tools: Highlighter, Eraser, Lasso, Ruler
-      case 'x':
-      case 'i':
-        e.preventDefault();
-        inkingStore.selectTool('Highlighter');
-        break;
-
-      case 'e':
-        e.preventDefault();
-        inkingStore.selectTool('Eraser');
-        break;
-
-      case 'l':
-      case 'q':
-        e.preventDefault();
-        inkingStore.selectTool('FreeformLasso');
-        break;
-
-      case 'r':
-        e.preventDefault();
-        rulerEngine.toggle();
-        break;
-
-      // Content Insert Shortcuts
-      case 'n':
-        e.preventDefault();
-        window.dispatchEvent(
-          new CustomEvent('wb-insert-object', {
-            detail: { type: 'note', payload: { color: '#FFF1A8', name: 'Yellow' } },
-          })
-        );
-        break;
-
-      case 't':
-        e.preventDefault();
-        window.dispatchEvent(
-          new CustomEvent('wb-insert-object', {
-            detail: { type: 'text', payload: { fontSize: 20, text: '' } },
-          })
-        );
-        break;
-
-      // Zoom Controls (+ / -)
-      case '+':
-      case '=':
-        e.preventDefault();
-        canvasStore.zoomIn();
-        break;
-
-      case '-':
-      case '_':
-        e.preventDefault();
-        canvasStore.zoomOut();
-        break;
-
       // Deletion (Delete / Backspace)
       case 'delete':
       case 'backspace':
@@ -256,6 +156,20 @@ export class ShortcutEngine {
         break;
     }
   };
+
+  public getRegisteredShortcuts(): ShortcutDefinition[] {
+    return [
+      { key: 'Alt+W', description: 'Pen Tool (Pen 1)', badge: 'Alt+W' },
+      { key: 'Alt+X', description: 'Eraser Tool', badge: 'Alt+X' },
+      { key: 'Ctrl + +', description: 'Zoom In', badge: 'Ctrl++' },
+      { key: 'Ctrl + -', description: 'Zoom Out', badge: 'Ctrl+-' },
+      { key: 'Ctrl+Z / Ctrl+Y', description: 'Undo / Redo', badge: 'Ctrl+Z/Y' },
+      { key: 'Ctrl+D', description: 'Duplicate Selected Objects', badge: 'Ctrl+D' },
+      { key: 'Delete / Backspace', description: 'Delete Selected Objects', badge: 'Del' },
+      { key: 'Ctrl+A', description: 'Select All Objects', badge: 'Ctrl+A' },
+      { key: 'Escape', description: 'Clear Selection / Return to Select Tool', badge: 'Esc' },
+    ];
+  }
 
   public start() {
     if (this.isListening) return;

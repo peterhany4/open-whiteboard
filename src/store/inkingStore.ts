@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Inking State Store
  *
  * Reverse-Engineered from REA Evidence:
@@ -218,6 +218,14 @@ export const inkingStore = {
 
   selectHandTool: () => {
     inkingStore.selectTool('Hand');
+  },
+
+  selectPen: (slot: PenSlot) => {
+    inkingStore.selectTool(slot);
+  },
+
+  setSelectedTool: (tool: InkingTool) => {
+    inkingStore.selectTool(tool);
   },
 
   togglePopover: (tool: InkingTool | null) => {

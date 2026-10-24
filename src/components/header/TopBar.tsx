@@ -4,7 +4,6 @@ import { useTheme } from '../../theme';
 import {
   UndoIcon,
   RedoIcon,
-  CopilotIcon,
   SettingsIcon,
   SunIcon,
   MoonIcon,
@@ -377,40 +376,8 @@ export const TopBar: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: Copilot, Share, Settings */}
+      {/* Right: Export Menu, Settings, Window Controls */}
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '8px', WebkitAppRegion: 'no-drag' as any }}>
-        {/* Copilot Pill Button */}
-        <button
-          title="Copilot in Open Whiteboard"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 12px',
-            height: '32px',
-            borderRadius: '16px',
-            border: '1px solid var(--colorNeutralStroke1)',
-            backgroundColor: 'var(--colorNeutralBackground1)',
-            color: 'var(--colorNeutralForeground1)',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 600,
-            transition: 'all 0.15s ease',
-            boxShadow: 'var(--shadow2)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'var(--themePrimary)';
-            e.currentTarget.style.boxShadow = '0 0 10px rgba(24, 90, 189, 0.25)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'var(--colorNeutralStroke1)';
-            e.currentTarget.style.boxShadow = 'var(--shadow2)';
-          }}
-        >
-          <CopilotIcon size={16} />
-          <span>Copilot</span>
-        </button>
-
         {/* Export Menu Dropdown */}
         <div ref={exportRef} style={{ position: 'relative' }}>
           <button
@@ -624,30 +591,6 @@ export const TopBar: React.FC = () => {
           )}
         </div>
 
-        {/* Share Button */}
-        <button
-          title="Share Whiteboard"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 14px',
-            height: '32px',
-            borderRadius: '6px',
-            border: 'none',
-            backgroundColor: 'var(--themePrimary)',
-            color: '#FFFFFF',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontWeight: 600,
-            transition: 'background-color 0.12s ease',
-            boxShadow: 'var(--shadow2)',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--themeDark)')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--themePrimary)')}
-        >
-          <span>Share</span>
-        </button>
 
         {/* Settings Menu Button & Popover */}
         <div ref={settingsRef} style={{ position: 'relative' }}>

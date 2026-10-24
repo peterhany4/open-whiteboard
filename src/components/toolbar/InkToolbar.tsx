@@ -62,11 +62,11 @@ export const InkToolbar: React.FC = () => {
   };
 
   const penSlots: { slot: PenSlot; label: string }[] = [
-    { slot: 'Pen1', label: 'Black Pen (1)' },
-    { slot: 'Pen2', label: 'Red Pen (2)' },
-    { slot: 'Pen3', label: 'Green Pen (3)' },
-    { slot: 'Pen4', label: 'Blue Pen (4)' },
-    { slot: 'PenEffect', label: 'Galaxy / Special Pen (5)' },
+    { slot: 'Pen1', label: 'Black Pen (Alt+W)' },
+    { slot: 'Pen2', label: 'Red Pen' },
+    { slot: 'Pen3', label: 'Green Pen' },
+    { slot: 'Pen4', label: 'Blue Pen' },
+    { slot: 'PenEffect', label: 'Galaxy / Special Pen' },
   ];
 
   return (
@@ -119,7 +119,7 @@ export const InkToolbar: React.FC = () => {
         <button
           id="wb-tool-select"
           onClick={() => inkingStore.selectTool('Select')}
-          title="Select (V / S)"
+          title="Select Tool"
           aria-label="Select Tool"
           aria-pressed={selectedTool === 'Select'}
           style={{
@@ -163,7 +163,7 @@ export const InkToolbar: React.FC = () => {
         <button
           id="wb-tool-hand"
           onClick={() => inkingStore.selectTool('Hand')}
-          title="Pan Canvas (H)"
+          title="Pan Canvas"
           aria-label="Pan Tool"
           aria-pressed={selectedTool === 'Hand'}
           style={{
@@ -305,7 +305,7 @@ export const InkToolbar: React.FC = () => {
           <button
             id="wb-tool-highlighter"
             onClick={() => handleToolClick('Highlighter')}
-            title="Highlighter (I)"
+            title="Highlighter"
             aria-pressed={selectedTool === 'Highlighter'}
             aria-haspopup="dialog"
             aria-expanded={activePopover === 'Highlighter'}
@@ -375,7 +375,7 @@ export const InkToolbar: React.FC = () => {
           <button
             id="wb-tool-laser"
             onClick={() => handleToolClick('Laser')}
-            title="Laser Pointer (L)"
+            title="Laser Pointer"
             aria-pressed={selectedTool === 'Laser'}
             aria-haspopup="dialog"
             aria-expanded={activePopover === 'Laser'}
@@ -455,7 +455,7 @@ export const InkToolbar: React.FC = () => {
           <button
             id="wb-tool-eraser"
             onClick={() => handleToolClick('Eraser')}
-            title={`Eraser (E) — ${eraser.mode === 'PointEraser' ? 'Partial Erase' : 'Stroke Erase'}`}
+            title={`Eraser (Alt+X) — ${eraser.mode === 'PointEraser' ? 'Partial Erase' : 'Stroke Erase'}`}
             aria-pressed={selectedTool === 'Eraser'}
             aria-haspopup="dialog"
             aria-expanded={activePopover === 'Eraser'}
@@ -521,7 +521,7 @@ export const InkToolbar: React.FC = () => {
         <button
           id="wb-tool-ruler"
           onClick={() => handleToolClick('Ruler')}
-          title="Ruler Overlay (R or Ctrl+R)"
+          title="Ruler Overlay"
           aria-pressed={isRulerActive}
           style={{
             position: 'relative',
@@ -561,7 +561,7 @@ export const InkToolbar: React.FC = () => {
         <button
           id="wb-tool-lasso"
           onClick={() => handleToolClick('FreeformLasso')}
-          title="Lasso Select (L / Q)"
+          title="Lasso Select"
           aria-pressed={selectedTool === 'FreeformLasso'}
           style={{
             position: 'relative',

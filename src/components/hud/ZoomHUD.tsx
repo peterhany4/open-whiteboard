@@ -42,7 +42,7 @@ export const ZoomHUD: React.FC = () => {
       {/* 1. Zoom Out */}
       <button
         onClick={() => canvasStore.zoomOut()}
-        title="Zoom Out (-)"
+        title="Zoom Out (Ctrl+-)"
         aria-label="Zoom Out"
         style={{
           width: '32px',
@@ -67,7 +67,7 @@ export const ZoomHUD: React.FC = () => {
       {/* 2. Zoom Percentage Button */}
       <button
         onClick={() => canvasStore.resetZoom()}
-        title="Reset Zoom to 100% (Ctrl+0)"
+        title="Reset Zoom to 100%"
         aria-label={`Current Zoom: ${zoomPercent}%. Click to reset`}
         style={{
           minWidth: '50px',
@@ -94,7 +94,7 @@ export const ZoomHUD: React.FC = () => {
       {/* 3. Zoom In */}
       <button
         onClick={() => canvasStore.zoomIn()}
-        title="Zoom In (+)"
+        title="Zoom In (Ctrl++)"
         aria-label="Zoom In"
         style={{
           width: '32px',

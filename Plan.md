@@ -197,12 +197,12 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Automatically revert to the previously active tool immediately upon pointer up.
 
 ### Milestone 16: Refined Keyboard Shortcuts (`Alt+W`, `Alt+X`) & TopBar Header Cleanup
-- [ ] **16.1 Re-map Ergonomic Shortcuts (`Alt+W` Pen 1, `Alt+X` Eraser):**
-  - Update `src/tools/ShortcutEngine.ts`: register `Alt+W` to activate Pen 1 and `Alt+X` to activate Eraser.
-  - Update shortcut badge tooltips in `InkToolbar.tsx` and help overlays.
-- [ ] **16.2 TopBar Header Action Pruning:**
-  - Remove dead/unused mockup buttons (`Copilot` and `Share`) from `src/components/header/TopBar.tsx`.
-  - Streamline header to board title, save status, export menu, theme toggle, and window caption controls.
+- [x] **16.1 Re-map Ergonomic Shortcuts (`Alt+W` Pen 1, `Alt+X` Eraser) & Strict Shortcut Whitelist:**
+  - Update `src/tools/ShortcutEngine.ts`: register `Alt+W` to activate Pen 1 (`inkingStore.selectPen('Pen1')`) and `Alt+X` to activate Eraser (`inkingStore.setSelectedTool('Eraser')`), with `e.preventDefault()`. Removed all non-whitelisted single-key shortcuts (V, S, H, P, 1-5, X, E, L, Q, R, N, T) and removed Ctrl+0 and bare +/-. Strictly preserved Ctrl++ / Ctrl+- (zoom), Ctrl+Z / Ctrl+Y (undo/redo), Ctrl+D (duplicate), Ctrl+A (select all), Delete / Backspace, and Escape.
+  - Update shortcut badge tooltips in `InkToolbar.tsx`, `ZoomHUD.tsx`, and documentation table in `README.md`.
+- [x] **16.2 TopBar Header Action Pruning:**
+  - Remove dead/unused mockup buttons (`Copilot` and `Share`) and unused `CopilotIcon` import from `src/components/header/TopBar.tsx`.
+  - Streamline header right section: Export menu ➔ Settings / Theme button ➔ Window caption controls with consistent gap and vertical centering.
 
 ### Milestone 17: "Enhance Inked Shapes" Engine & Settings Toggle (Inspect ➔ Trace ➔ Recreate)
 - [ ] **17.1 REA Investigation & Evidence Trace for Shape Recognition:**
@@ -234,6 +234,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `14.2 Adaptive High-Contrast Grid Math (Milestone 14 complete)`
-- **Current Active Sub-Task:** `Milestone 14 Complete, Ready for Milestone 15 or 16`
-- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 16 (Refined Keyboard Shortcuts Alt+W / Alt+X & TopBar Header Cleanup) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
+- **Last Completed Sub-Task:** `16.2 TopBar Header Action Pruning (Milestone 16 complete)`
+- **Current Active Sub-Task:** `Milestone 16 Complete, Ready for Milestone 11, 12, 13, 15, 17, 18, or 19`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 12 (Distinct Inking Icons & Tool-Specific Custom Cursors) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
