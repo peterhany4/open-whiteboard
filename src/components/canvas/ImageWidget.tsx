@@ -33,7 +33,9 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
     if (e.button === 0) {
       e.stopPropagation();
       const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
-      selectionStore.select(image.id, isShift);
+      if (!isLocked) {
+        selectionStore.select(image.id, isShift);
+      }
     }
   };
 
@@ -85,7 +87,7 @@ export const ImageWidget: React.FC<ImageWidgetProps> = memo(({ image }) => {
 
   return (
     <div
-      id={`image-${image.id}`}
+      id={`wb-image-${image.id}`}
       style={{
         position: 'absolute',
         left: `${image.x}px`,

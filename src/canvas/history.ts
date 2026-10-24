@@ -67,42 +67,9 @@ class HistoryManager {
   private setupListeners() {
     if (typeof window === 'undefined') return;
 
-    // Listen to custom window events from TopBar buttons
+    // Listen to custom window events from TopBar buttons, Eraser popover, and ShortcutEngine
     window.addEventListener('wb-undo', () => this.undo());
     window.addEventListener('wb-redo', () => this.redo());
-
-    // Listen to global keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z / Cmd+Z / Cmd+Shift+Z
-    window.addEventListener('keydown', (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
-      ) {
-        // Let text inputs handle their internal undo/redo
-        return;
-      }
-
-      const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-      const modifier = isMac ? e.metaKey : e.ctrlKey;
-
-      if (!modifier) return;
-
-      const key = e.key.toLowerCase();
-
-      if (key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          this.redo();
-        } else {
-          this.undo();
-        }
-      } else if (key === 'y' && !isMac) {
-        e.preventDefault();
-        this.redo();
-      }
-    });
   }
 
   /**

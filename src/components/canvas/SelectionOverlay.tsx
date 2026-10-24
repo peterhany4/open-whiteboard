@@ -14,6 +14,8 @@ import { useSelectionStore, selectionStore } from '../../store/selectionStore';
 import { sceneStore } from '../../store/sceneStore';
 import { historyManager } from '../../canvas/history';
 import type { CanvasEntity, InkStrokeEntity, NoteEntity, NoteGridEntity, TextEntity, ShapeEntity, ReactionEntity, ImageEntity, PDFDocumentEntity, AABB } from '../../canvas/sceneGraph';
+import { screenToWorld } from '../../canvas/camera';
+import { findTopEntityAtPoint } from '../../tools/SelectTool';
 import { useCanvasStore } from '../../store/canvasStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { lassoTool } from '../../tools/LassoTool';
@@ -81,26 +83,49 @@ export const SelectionOverlay: React.FC = () => {
   const isRotatingRef = useRef(false);
   const dragInitialRef = useRef<DragInitialState | null>(null);
 
-  // 1. Translation: Move Selected Entities
+  // 1. Translation: Move Selected Entities & Topmost Layer Hit-Testing
   const handleBodyPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0 || !selectionBounds) return;
       e.stopPropagation();
       e.preventDefault();
 
+      const clickWorld = screenToWorld({ x: e.clientX, y: e.clientY }, camera);
+      const topEntity = findTopEntityAtPoint(clickWorld, 6);
+      const currentEntities = selectionStore.getSelectedEntities();
+      const selectedIds = new Set(currentEntities.map((ent) => ent.id));
+
+      // Layered Objects Hit-Testing & Selection Passing:
+      // If the user clicks on an unselected entity that sits visually on top (e.g. Text over Image,
+      // Sticky Note over Shape, etc.), transfer selection directly to that topmost entity!
+      if (topEntity && !selectedIds.has(topEntity.id)) {
+        const isAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
+        selectionStore.select(topEntity.id, isAdditive);
+
+        // Immediate drag engagement for the newly selected entity
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        isDraggingBodyRef.current = true;
+        hasDraggedBodyRef.current = false;
+        dragInitialRef.current = {
+          startX: e.clientX,
+          startY: e.clientY,
+          entities: [JSON.parse(JSON.stringify(topEntity))],
+          initialBounds: { ...topEntity.bounds },
+        };
+        return;
+      }
+
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       isDraggingBodyRef.current = true;
       hasDraggedBodyRef.current = false;
 
-      const currentEntities = selectionStore.getSelectedEntities();
       const allScene = sceneStore.getAllEntities();
-      const selectedIds = new Set(currentEntities.map((e) => e.id));
       const entitiesToMove: CanvasEntity[] = [...currentEntities];
 
       // Spatial Document Anchoring: Moving an unlocked PDF document or image automatically translates
       // all overlapping ink strokes, highlighters, and sticky notes positioned on top of it.
       const docsInSelection = currentEntities.filter(
-        (e) => e.type === 'image' || e.type === 'pdf_document'
+        (ent) => ent.type === 'image' || ent.type === 'pdf_document'
       ) as (ImageEntity | PDFDocumentEntity)[];
       if (docsInSelection.length > 0) {
         for (const sceneItem of allScene) {
@@ -131,7 +156,7 @@ export const SelectionOverlay: React.FC = () => {
         initialBounds: { ...selectionBounds },
       };
     },
-    [selectionBounds]
+    [selectionBounds, camera]
   );
 
   // 2. Resize Handle Pointer Down
@@ -472,27 +497,15 @@ export const SelectionOverlay: React.FC = () => {
   }, []);
 
   const handleBringToFront = useCallback(() => {
-    const all = sceneStore.getAllEntities();
-    const maxZ = all.reduce((max, e) => Math.max(max, e.zIndex), 100);
     const selected = selectionStore.getSelectedEntities();
-
-    historyManager.inUndoGroup('Bring to Front', () => {
-      selected.forEach((e, idx) => {
-        sceneStore.updateEntity(e.id, { zIndex: maxZ + 1 + idx }, true);
-      });
-    });
+    if (selected.length === 0) return;
+    sceneStore.bringToFront(selected.map((e) => e.id));
   }, []);
 
   const handleSendToBack = useCallback(() => {
-    const all = sceneStore.getAllEntities();
-    const minZ = all.reduce((min, e) => Math.min(min, e.zIndex), 100);
     const selected = selectionStore.getSelectedEntities();
-
-    historyManager.inUndoGroup('Send to Back', () => {
-      selected.forEach((e, idx) => {
-        sceneStore.updateEntity(e.id, { zIndex: Math.max(1, minZ - selected.length + idx) }, true);
-      });
-    });
+    if (selected.length === 0) return;
+    sceneStore.sendToBack(selected.map((e) => e.id));
   }, []);
 
   const handleToggleLock = useCallback(() => {

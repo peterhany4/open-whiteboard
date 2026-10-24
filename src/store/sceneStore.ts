@@ -181,6 +181,104 @@ class SceneStore {
   }
 
   /**
+   * Reordering: Bring entities to the absolute top of the visual stack (highest zIndex).
+   */
+  public bringToFront(ids: string[]) {
+    const targets = ids
+      .map((id) => this.entities.get(id))
+      .filter((e): e is CanvasEntity => Boolean(e));
+    if (targets.length === 0) return;
+
+    const all = this.getAllEntities();
+    const maxZ = all.reduce((max, e) => Math.max(max, e.zIndex || 100), 100);
+
+    // Sort targets by current zIndex ascending to maintain relative order
+    targets.sort((a, b) => (a.zIndex || 100) - (b.zIndex || 100));
+
+    historyManager.inUndoGroup('Bring to Front', () => {
+      targets.forEach((e, idx) => {
+        this.updateEntity(e.id, { zIndex: maxZ + 1 + idx }, true);
+      });
+    });
+  }
+
+  /**
+   * Reordering: Lower entities to the bottom-most unlocked layer above background (min zIndex: 60).
+   */
+  public sendToBack(ids: string[]) {
+    const targetSet = new Set(ids);
+    const targets = ids
+      .map((id) => this.entities.get(id))
+      .filter((e): e is CanvasEntity => Boolean(e));
+    if (targets.length === 0) return;
+
+    const all = this.getAllEntities();
+    const unlockedNonTargets = all.filter(
+      (e) => !targetSet.has(e.id) && !e.isLocked && !(e.type === 'image' && (e as any).isLockedToBackground)
+    );
+
+    const minUnlockedZ = unlockedNonTargets.reduce(
+      (min, e) => Math.min(min, e.zIndex || 100),
+      100
+    );
+
+    targets.sort((a, b) => (a.zIndex || 100) - (b.zIndex || 100));
+
+    const offsetNeeded = targets.length + 5;
+    historyManager.inUndoGroup('Send to Back', () => {
+      // If minUnlockedZ is too close to 60, shift existing unlocked entities upward to make space
+      if (minUnlockedZ <= 60 + offsetNeeded && unlockedNonTargets.length > 0) {
+        const shift = 60 + offsetNeeded - minUnlockedZ + 5;
+        unlockedNonTargets.forEach((e) => {
+          this.updateEntity(e.id, { zIndex: (e.zIndex || 100) + shift }, true);
+        });
+      }
+
+      targets.forEach((e, idx) => {
+        this.updateEntity(e.id, { zIndex: 60 + idx }, true);
+      });
+    });
+  }
+
+  /**
+   * Step-wise bring forward: swaps layer position with the next higher entity.
+   */
+  public bringForward(ids: string[]) {
+    const all = this.getAllEntities();
+    const targetSet = new Set(ids);
+    historyManager.inUndoGroup('Bring Forward', () => {
+      for (let i = all.length - 2; i >= 0; i--) {
+        const curr = all[i];
+        const next = all[i + 1];
+        if (targetSet.has(curr.id) && !targetSet.has(next.id)) {
+          const tempZ = curr.zIndex;
+          this.updateEntity(curr.id, { zIndex: Math.max(curr.zIndex + 1, next.zIndex) }, true);
+          this.updateEntity(next.id, { zIndex: tempZ }, true);
+        }
+      }
+    });
+  }
+
+  /**
+   * Step-wise send backward: swaps layer position with the next lower unlocked entity.
+   */
+  public sendBackward(ids: string[]) {
+    const all = this.getAllEntities();
+    const targetSet = new Set(ids);
+    historyManager.inUndoGroup('Send Backward', () => {
+      for (let i = 1; i < all.length; i++) {
+        const curr = all[i];
+        const prev = all[i - 1];
+        if (targetSet.has(curr.id) && !targetSet.has(prev.id) && !prev.isLocked) {
+          const tempZ = curr.zIndex;
+          this.updateEntity(curr.id, { zIndex: Math.max(60, prev.zIndex) }, true);
+          this.updateEntity(prev.id, { zIndex: Math.max(prev.zIndex + 1, tempZ) }, true);
+        }
+      }
+    });
+  }
+
+  /**
    * Clears all entities from canvas.
    */
   public clearEntities(undoable: boolean = true) {

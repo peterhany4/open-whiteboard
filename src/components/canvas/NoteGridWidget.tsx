@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Dynamic Note Grid Widget
  *
  * Reverse-Engineered from REA Evidence:
@@ -119,7 +119,13 @@ export const NoteGridWidget: React.FC<NoteGridWidgetProps> = ({ noteGrid }) => {
       id={`wb-notegrid-${noteGrid.id}`}
       onClick={handleGridClick}
       onPointerDown={(e) => {
-        if (e.button === 0) e.stopPropagation();
+        if (e.button === 0) {
+          e.stopPropagation();
+          const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
+          if (!selected) {
+            selectionStore.select(noteGrid.id, isShift);
+          }
+        }
       }}
       style={{
         position: 'absolute',

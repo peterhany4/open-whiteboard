@@ -162,7 +162,13 @@ export const StickyNoteWidget: React.FC<StickyNoteWidgetProps> = ({ note }) => {
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onPointerDown={(e) => {
-        if (isSelectTool && e.button === 0) e.stopPropagation();
+        if (isSelectTool && e.button === 0) {
+          e.stopPropagation();
+          const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
+          if (!selected) {
+            selectionStore.select(note.id, isShift);
+          }
+        }
       }}
       style={{
         position: 'absolute',

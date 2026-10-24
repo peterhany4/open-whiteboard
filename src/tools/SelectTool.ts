@@ -10,7 +10,7 @@
 
 import type { CameraMatrix, Point } from '../canvas/camera';
 import { screenToWorld } from '../canvas/camera';
-import type { InkStrokeEntity, ImageEntity, AABB } from '../canvas/sceneGraph';
+import type { CanvasEntity, InkStrokeEntity, ImageEntity, AABB } from '../canvas/sceneGraph';
 import { sceneStore } from '../store/sceneStore';
 import { selectionStore } from '../store/selectionStore';
 
@@ -28,7 +28,7 @@ export interface LiveMarqueeState {
 /**
  * Computes minimum distance from a point to a line segment (v, w)
  */
-function distToSegment(p: Point, v: Point, w: Point): number {
+export function distToSegment(p: Point, v: Point, w: Point): number {
   const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
   if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
   let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
@@ -36,6 +36,48 @@ function distToSegment(p: Point, v: Point, w: Point): number {
   const projX = v.x + t * (w.x - v.x);
   const projY = v.y + t * (w.y - v.y);
   return Math.hypot(p.x - projX, p.y - projY);
+}
+
+/**
+ * Finds the topmost visual entity under point p (highest zIndex first).
+ * Excludes locked background entities.
+ */
+export function findTopEntityAtPoint(p: Point, hitMargin: number = 6): CanvasEntity | null {
+  const allEntities = sceneStore.getAllEntities();
+  // allEntities is sorted ascending by zIndex; search in reverse order (topmost first)
+  for (let i = allEntities.length - 1; i >= 0; i--) {
+    const entity = allEntities[i];
+    if (entity.isLocked || (entity.type === 'image' && (entity as any).isLockedToBackground)) {
+      continue;
+    }
+
+    const b = entity.bounds;
+    if (
+      p.x < b.minX - hitMargin ||
+      p.x > b.maxX + hitMargin ||
+      p.y < b.minY - hitMargin ||
+      p.y > b.maxY + hitMargin
+    ) {
+      continue;
+    }
+
+    // Detailed geometric hit test for strokes
+    if (entity.type === 'stroke') {
+      const stroke = entity as InkStrokeEntity;
+      const radius = Math.max(8, (stroke.width || 2) / 2 + 6);
+      let hit = false;
+      for (let j = 0; j < stroke.points.length - 1; j++) {
+        if (distToSegment(p, stroke.points[j], stroke.points[j + 1]) <= radius) {
+          hit = true;
+          break;
+        }
+      }
+      if (hit) return entity;
+    } else {
+      return entity;
+    }
+  }
+  return null;
 }
 
 /**
@@ -179,51 +221,14 @@ export class SelectToolEngine {
    * Hit tests a single click against all scene entities (highest z-index first)
    */
   public hitTestSingleClick(p: Point, isAdditive: boolean): boolean {
-    const allEntities = sceneStore.getAllEntities();
-
-    // Test in reverse order (topmost zIndex first)
-    for (let i = allEntities.length - 1; i >= 0; i--) {
-      const entity = allEntities[i];
-
-      const b = entity.bounds;
-      const hitMargin = 8;
-      if (
-        p.x < b.minX - hitMargin ||
-        p.x > b.maxX + hitMargin ||
-        p.y < b.minY - hitMargin ||
-        p.y > b.maxY + hitMargin
-      ) {
-        continue;
-      }
-
-      // Detailed geometric hit test
-      if (entity.type === 'stroke') {
-        const stroke = entity as InkStrokeEntity;
-        const radius = Math.max(8, (stroke.width || 2) / 2 + 6);
-        let hit = false;
-        for (let j = 0; j < stroke.points.length - 1; j++) {
-          if (distToSegment(p, stroke.points[j], stroke.points[j + 1]) <= radius) {
-            hit = true;
-            break;
-          }
-        }
-        if (hit) {
-          if (isAdditive && selectionStore.isSelected(entity.id)) {
-            selectionStore.deselect(entity.id);
-          } else {
-            selectionStore.select(entity.id, isAdditive);
-          }
-          return true;
-        }
+    const topEntity = findTopEntityAtPoint(p, 8);
+    if (topEntity) {
+      if (isAdditive && selectionStore.isSelected(topEntity.id)) {
+        selectionStore.deselect(topEntity.id);
       } else {
-        // Box entity (note, text, shape, image, reaction, notegrid)
-        if (isAdditive && selectionStore.isSelected(entity.id)) {
-          selectionStore.deselect(entity.id);
-        } else {
-          selectionStore.select(entity.id, isAdditive);
-        }
-        return true;
+        selectionStore.select(topEntity.id, isAdditive);
       }
+      return true;
     }
 
     // Clicked on empty space: clear selection unless modifier is active

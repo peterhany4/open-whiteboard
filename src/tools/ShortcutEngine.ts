@@ -12,6 +12,7 @@
 import { inkingStore } from '../store/inkingStore';
 import { canvasStore } from '../store/canvasStore';
 import { selectionStore } from '../store/selectionStore';
+import { sceneStore } from '../store/sceneStore';
 import { boardStore } from '../store/boardStore';
 
 export interface ShortcutDefinition {
@@ -96,6 +97,26 @@ export class ShortcutEngine {
       if (e.key === '-' || e.key === '_') {
         e.preventDefault();
         canvasStore.zoomOut();
+        return;
+      }
+
+      // Bring to Front: Ctrl+] or Ctrl+Shift+] / Ctrl+}
+      if (e.key === ']' || e.key === '}') {
+        const ids = Array.from(selectionStore.getSelectedIds());
+        if (ids.length > 0) {
+          e.preventDefault();
+          sceneStore.bringToFront(ids);
+        }
+        return;
+      }
+
+      // Send to Back: Ctrl+[ or Ctrl+Shift+[ / Ctrl+{
+      if (e.key === '[' || e.key === '{') {
+        const ids = Array.from(selectionStore.getSelectedIds());
+        if (ids.length > 0) {
+          e.preventDefault();
+          sceneStore.sendToBack(ids);
+        }
         return;
       }
 

@@ -356,9 +356,50 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 26: Unified Single-Keydown Undo Engine & Microsoft Whiteboard Layered Objects Architecture
+- [x] **26.1 Single Authority Undo/Redo Engine (Eliminate Double Undo on Ctrl+Z):**
+  - In `src/canvas/history.ts`:
+    - Remove the duplicate global `window.addEventListener('keydown')` listener (lines 74–105).
+    - Retain custom window event listeners (`wb-undo` and `wb-redo`) so TopBar buttons, Eraser popover, and `ShortcutEngine` dispatch directly to `historyManager`.
+  - In `src/tools/ShortcutEngine.ts`:
+    - Confirm `ShortcutEngine` remains the single global authority for keyboard shortcuts, cleanly dispatching `canvasStore.triggerUndo()` and `triggerRedo()` exactly once per keypress while respecting active text inputs.
+- [x] **26.2 Microsoft Whiteboard Layered Objects Hit-Testing & Selection Passing:**
+  - Reverse-Engineered REA Architecture (`BoardEditorComponent-852bcd1f`, `32660`, `69997`):
+    - In Microsoft Whiteboard, overlapping objects are resolved by stacking order (`zIndex`). The selection bounding box does not block pointer events for entities visually on top of the selected object.
+    - When clicking within an object's bounding box, hit-testing prioritizes the top-most z-index entity under the cursor. If an unselected entity (e.g., Text, Sticky Note, Shape, Reaction) sits on top of a selected object (e.g., Image), clicking immediately transfers selection to that top entity.
+  - In `src/components/canvas/SelectionOverlay.tsx`:
+    - In `handleBodyPointerDown`: Perform a spatial hit-test at pointer world coordinates against all scene entities in descending visual order (`a.zIndex - b.zIndex`).
+    - If an entity under the cursor has a higher `zIndex` than the currently selected entity, or is an unselected entity on top, immediately transfer selection to it (`selectionStore.select(topEntity.id, isAdditive)`).
+    - If the user double-clicks, immediately activate inline editing for editable entities (Text, Notes, Shapes).
+    - If the pointerdown hits the selected entity with no overlapping top entity, proceed seamlessly with move/translation dragging.
+  - In `src/components/canvas/ImageWidget.tsx`:
+    - Fix container element id from `id="image-${image.id}"` to `id="wb-image-${image.id}"` to match `CanvasViewport`'s interactive selector `[id^="wb-image-"]`.
+    - Harmonize pointerdown and click event bubbling across all canvas widgets (`ImageWidget`, `TextBoxWidget`, `StickyNoteWidget`, `ShapeWidget`, `ReactionWidget`).
+- [x] **26.3 Complete Object Z-Ordering (Bring to Front, Send to Back & Fluent Shortcuts):**
+  - Reverse-Engineered REA Evidence (`69997`, `8854`, `BoardEditorComponent-852bcd1f`):
+    - Target methods: `bringToFrontMethod` (`bringToFrontAction`), `sendToBackMethod` (`sendToBackAction`), shortcuts: `Ctrl+Shift+]` / `}` (Bring to Front) and `Ctrl+Shift+[` / `{` (Send to Back).
+  - In `src/store/sceneStore.ts`:
+    - Implement `bringToFront(ids: string[])`: Elevates entities to `maxZ + 1`, recorded in `historyManager` undo groups.
+    - Implement `sendToBack(ids: string[])`: Lowers entities to bottom-most unlocked layer (above background/locked entities at `zIndex: 50`, setting minimum `zIndex: 60`), recorded in `historyManager`.
+    - Implement `bringForward(ids: string[])` and `sendBackward(ids: string[])` for step-wise layer adjustments.
+  - In `src/components/canvas/SelectionOverlay.tsx`:
+    - Connect `#wb-context-front` and `#wb-context-back` context menu buttons directly to `sceneStore.bringToFront` and `sceneStore.sendToBack`.
+  - In `src/tools/ShortcutEngine.ts`:
+    - Add global keyboard shortcuts:
+      - `Ctrl+]` and `Ctrl+Shift+]` (or `}`): Bring to Front.
+      - `Ctrl+[` and `Ctrl+Shift+[` (or `{`): Send to Back.
+- [x] **26.4 Automated Test Verification & Clean Production Build:**
+  - Create `scratch/test_milestone26_undo_and_layering.js` validating:
+    1. Single Undo on `Ctrl+Z`: exactly 1 action popped per keypress.
+    2. Layered Object Hit-Testing: clicking Text over an Image transfers selection directly to Text without needing to lock the image.
+    3. Z-order reordering: `bringToFront` and `sendToBack` update stacking order cleanly above locked background items.
+  - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `25.3 Granular One-by-One Undo/Redo for PDF Highlights (Milestone 25 complete)`
-- **Current Active Sub-Task:** `Milestone 25 Execution Complete — Verified with Automated Test Suite & Clean Production Build`
-- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 25, or specify the next milestone or feature!"`
+- **Last Completed Sub-Task:** `26.4 Automated Test Verification & Clean Production Build (Milestone 26 complete)`
+- **Current Active Sub-Task:** `Milestone 26 Complete — Verified with Automated Test Suite & Clean Production Build`
+- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 26, or specify the next milestone or feature!"`

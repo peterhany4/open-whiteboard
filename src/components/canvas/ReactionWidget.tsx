@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Reactions & Canvas Stickers Widget
  *
  * Reverse-Engineered from REA Evidence:
@@ -79,7 +79,13 @@ export const ReactionWidget: React.FC<ReactionWidgetProps> = ({ reaction }) => {
       id={`wb-reaction-${reaction.id}`}
       onClick={handleClick}
       onPointerDown={(e) => {
-        if (e.button === 0) e.stopPropagation();
+        if (e.button === 0) {
+          e.stopPropagation();
+          const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
+          if (!selected) {
+            selectionStore.select(reaction.id, isShift);
+          }
+        }
       }}
       style={{
         position: 'absolute',

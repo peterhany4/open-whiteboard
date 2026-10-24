@@ -288,7 +288,13 @@ export const ShapeWidget: React.FC<ShapeWidgetProps> = ({ shape }) => {
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onPointerDown={(e) => {
-        if (isSelectTool && e.button === 0) e.stopPropagation();
+        if (isSelectTool && e.button === 0) {
+          e.stopPropagation();
+          const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
+          if (!selected) {
+            selectionStore.select(shape.id, isShift);
+          }
+        }
       }}
       style={{
         position: 'absolute',
