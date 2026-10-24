@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Multi-Board Persistence Engine & Gallery Store
  *
  * Reverse-Engineered from REA Evidence:
@@ -14,13 +14,25 @@ import type { GridPatternType } from '../canvas/grid';
 import type { CameraMatrix } from '../canvas/camera';
 import { sceneStore } from './sceneStore';
 import { canvasStore } from './canvasStore';
+import { selectionStore } from './selectionStore';
+import { inkingStore } from './inkingStore';
+import { historyManager } from '../canvas/history';
+import { rulerEngine } from '../tools/RulerEngine';
 import { ExportEngine } from '../tools/ExportEngine';
+
+export interface BoardRulerData {
+  x: number;
+  y: number;
+  angle: number;
+  isVisible: boolean;
+}
 
 export interface BoardCanvasData {
   entities: CanvasEntity[];
   gridPattern?: GridPatternType;
   paperColor?: string;
   camera?: CameraMatrix;
+  ruler?: BoardRulerData;
 }
 
 export interface BoardRecord {
@@ -317,6 +329,12 @@ class BoardStore {
       if (summaries.length === 0) {
         // No boards saved in storage — start cleanly at the board picker
         sceneStore.loadEntities([]);
+        canvasStore.setCamera({ scale: 1.0, positionX: 0, positionY: 0 });
+        rulerEngine.reset(0, 0, 0, false);
+        historyManager.clear();
+        selectionStore.clearSelection();
+        inkingStore.selectTool('Select');
+        inkingStore.closePopover();
         localStorage.removeItem(LAST_ACTIVE_KEY);
         this.setState({
           boards: [],
@@ -338,6 +356,16 @@ class BoardStore {
           canvasStore.setBoardTitle(targetRecord.title);
           if (targetRecord.canvasData.gridPattern) {
             canvasStore.setGridPattern(targetRecord.canvasData.gridPattern);
+          }
+          if (targetRecord.canvasData.camera) {
+            canvasStore.setCamera(targetRecord.canvasData.camera);
+          } else {
+            canvasStore.setCamera({ scale: 1.0, positionX: 0, positionY: 0 });
+          }
+          if (targetRecord.canvasData.ruler) {
+            rulerEngine.restoreState(targetRecord.canvasData.ruler);
+          } else {
+            rulerEngine.reset(0, 0, 0, false);
           }
         }
 
@@ -399,9 +427,15 @@ class BoardStore {
     const title = customTitle || 'Untitled whiteboard';
     const now = new Date().toISOString();
 
-    // Reset sceneStore with empty entities
+    // Pristine board initialization (Milestone 18.1)
     sceneStore.loadEntities([]);
     canvasStore.setBoardTitle(title);
+    canvasStore.setCamera({ scale: 1.0, positionX: 0, positionY: 0 });
+    rulerEngine.reset(0, 0, 0, false);
+    historyManager.clear();
+    selectionStore.clearSelection();
+    inkingStore.selectTool('Select');
+    inkingStore.closePopover();
 
     const emptyThumbnail = await ExportEngine.generateThumbnail([]);
 
@@ -414,6 +448,8 @@ class BoardStore {
       canvasData: {
         entities: [],
         gridPattern: canvasStore.getState().gridPattern,
+        camera: { scale: 1.0, positionX: 0, positionY: 0 },
+        ruler: { x: 0, y: 0, angle: 0, isVisible: false },
       },
     };
 
@@ -449,6 +485,9 @@ class BoardStore {
     const now = new Date().toISOString();
     const boardTitle = title || 'Imported Whiteboard';
 
+    const camera = canvasData?.camera || { scale: 1.0, positionX: 0, positionY: 0 };
+    const ruler = canvasData?.ruler || { x: 0, y: 0, angle: 0, isVisible: false };
+
     const record: BoardRecord = {
       id: newId,
       title: boardTitle,
@@ -458,6 +497,8 @@ class BoardStore {
       canvasData: {
         entities,
         gridPattern: canvasData?.gridPattern || 'Dot',
+        camera,
+        ruler,
       },
     };
 
@@ -477,6 +518,17 @@ class BoardStore {
     if (record.canvasData.gridPattern) {
       canvasStore.setGridPattern(record.canvasData.gridPattern);
     }
+    canvasStore.setCamera(camera);
+    if (canvasData?.ruler) {
+      rulerEngine.restoreState(canvasData.ruler);
+    } else {
+      rulerEngine.reset(0, 0, 0, false);
+    }
+
+    historyManager.clear();
+    selectionStore.clearSelection();
+    inkingStore.selectTool('Select');
+    inkingStore.closePopover();
 
     this.setState({
       boards: [summary, ...this.state.boards],
@@ -504,11 +556,31 @@ class BoardStore {
       return;
     }
 
+    // Isolate per-board canvas state (Milestone 18.2)
+    selectionStore.clearSelection();
+    historyManager.clear();
+    inkingStore.closePopover();
+    inkingStore.selectTool('Select');
+
     // Load board contents
     sceneStore.loadEntities(record.canvasData.entities || []);
     canvasStore.setBoardTitle(record.title);
     if (record.canvasData.gridPattern) {
       canvasStore.setGridPattern(record.canvasData.gridPattern);
+    }
+
+    // Restore isolated camera matrix
+    if (record.canvasData.camera) {
+      canvasStore.setCamera(record.canvasData.camera);
+    } else {
+      canvasStore.setCamera({ scale: 1.0, positionX: 0, positionY: 0 });
+    }
+
+    // Restore isolated ruler state
+    if (record.canvasData.ruler) {
+      rulerEngine.restoreState(record.canvasData.ruler);
+    } else {
+      rulerEngine.reset(0, 0, 0, false);
     }
 
     localStorage.setItem(LAST_ACTIVE_KEY, id);
@@ -570,6 +642,12 @@ class BoardStore {
       canvasData: {
         ...original.canvasData,
         entities: clonedEntities,
+        camera: original.canvasData.camera
+          ? { ...original.canvasData.camera }
+          : { scale: 1.0, positionX: 0, positionY: 0 },
+        ruler: original.canvasData.ruler
+          ? { ...original.canvasData.ruler }
+          : { x: 0, y: 0, angle: 0, isVisible: false },
       },
     };
 
@@ -604,6 +682,12 @@ class BoardStore {
       // No boards left — clear canvas state and stay in (or return to) board picker gallery
       sceneStore.loadEntities([]);
       canvasStore.setBoardTitle('Untitled whiteboard');
+      canvasStore.setCamera({ scale: 1.0, positionX: 0, positionY: 0 });
+      rulerEngine.reset(0, 0, 0, false);
+      historyManager.clear();
+      selectionStore.clearSelection();
+      inkingStore.selectTool('Select');
+      inkingStore.closePopover();
       localStorage.removeItem(LAST_ACTIVE_KEY);
 
       this.setState({
@@ -650,6 +734,14 @@ class BoardStore {
     const boardId = this.state.activeBoardId;
     const title = canvasStore.getState().boardTitle || 'Untitled whiteboard';
     const entities = sceneStore.serializeEntities();
+    const currentCamera = canvasStore.getState().camera;
+    const currentRuler = rulerEngine.getState();
+    const rulerData: BoardRulerData = {
+      x: currentRuler.x,
+      y: currentRuler.y,
+      angle: currentRuler.angle,
+      isVisible: currentRuler.isActive,
+    };
     const now = new Date().toISOString();
 
     this.setState({ isSaving: true });
@@ -667,6 +759,8 @@ class BoardStore {
         canvasData: {
           entities,
           gridPattern: canvasStore.getState().gridPattern,
+          camera: currentCamera,
+          ruler: rulerData,
         },
       };
 
@@ -717,12 +811,25 @@ class BoardStore {
       this.scheduleAutoSave();
     });
 
-    // Listen to title changes in canvasStore
+    // Listen to title, camera & grid changes in canvasStore
+    let prevCamera = canvasStore.getState().camera;
+    let prevGrid = canvasStore.getState().gridPattern;
     canvasStore.subscribe(() => {
+      const state = canvasStore.getState();
       const activeSummary = this.state.boards.find((b) => b.id === this.state.activeBoardId);
-      if (activeSummary && activeSummary.title !== canvasStore.getState().boardTitle) {
+      if (activeSummary && activeSummary.title !== state.boardTitle) {
         this.scheduleAutoSave();
       }
+      if (state.camera !== prevCamera || state.gridPattern !== prevGrid) {
+        prevCamera = state.camera;
+        prevGrid = state.gridPattern;
+        this.scheduleAutoSave();
+      }
+    });
+
+    // Listen to ruler changes
+    rulerEngine.subscribe(() => {
+      this.scheduleAutoSave();
     });
 
     // Save before window unload
@@ -733,6 +840,8 @@ class BoardStore {
           try {
             const id = this.state.activeBoardId;
             const entities = sceneStore.serializeEntities();
+            const currentCamera = canvasStore.getState().camera;
+            const currentRuler = rulerEngine.getState();
             const raw = localStorage.getItem(LOCALSTORAGE_PREFIX + id);
             const base = raw ? JSON.parse(raw) : { createdAt: new Date().toISOString() };
             localStorage.setItem(
@@ -742,7 +851,17 @@ class BoardStore {
                 id,
                 title: canvasStore.getState().boardTitle,
                 updatedAt: new Date().toISOString(),
-                canvasData: { entities, gridPattern: canvasStore.getState().gridPattern },
+                canvasData: {
+                  entities,
+                  gridPattern: canvasStore.getState().gridPattern,
+                  camera: currentCamera,
+                  ruler: {
+                    x: currentRuler.x,
+                    y: currentRuler.y,
+                    angle: currentRuler.angle,
+                    isVisible: currentRuler.isActive,
+                  },
+                },
               })
             );
           } catch {

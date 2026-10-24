@@ -217,13 +217,16 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 - [ ] **17.3 Settings Toggle & Automatic Vector Shape Replacement:**
   - Add "Enhance inked shapes" toggle switch in `TopBar.tsx` Settings menu (persisted in `canvasStore`).
   - On pen stroke release, if enabled and confidence > 0.85, morph the rough stroke into a clean vector `ShapeEntity` preserving stroke color, thickness, and bounding box.
-
 ### Milestone 18: Individual Board Session Isolation & Pristine Board Initialization
-- [ ] **18.1 Clean New Board Initialization:**
-  - Ensure creating a new board opens in a pristine default state: Select tool default, ruler hidden (`isVisible: false`) and centered at angle 0°, camera matrix reset to `{ x: 0, y: 0, scale: 1.0 }`, and history stacks cleared.
-- [ ] **18.2 Per-Board Canvas State Isolation:**
-  - Extend `BoardCanvasData` in `src/store/boardStore.ts` to persist per-board ruler coordinates (`{ x, y, angle, isVisible }`) and camera state.
-  - When switching between existing boards, restore each board's own isolated ruler and camera state without cross-board contamination.
+- [x] **18.1 Clean New Board Initialization:**
+  - Added `rulerEngine.reset(x, y, angle, isVisible)` to reset ruler position, angle (0°), and visibility (`false`) in `src/tools/RulerEngine.ts`.
+  - Updated `createNewBoard` in `src/store/boardStore.ts` to ensure creating a new board opens in a pristine default state: Select tool default (`inkingStore.selectTool('Select')`), active popovers closed (`inkingStore.closePopover()`), entity selection cleared (`selectionStore.clearSelection()`), ruler hidden and centered at angle 0° (`rulerEngine.reset(0, 0, 0, false)`), camera matrix reset to 100% `{ scale: 1.0, positionX: 0, positionY: 0 }`, and history stacks cleared (`historyManager.clear()`).
+- [x] **18.2 Per-Board Canvas State Isolation:**
+  - Defined `BoardRulerData` and extended `BoardCanvasData` in `src/store/boardStore.ts` to persist per-board ruler coordinates (`{ x, y, angle, isVisible }`) and camera matrix (`{ scale, positionX, positionY }`).
+  - Updated `flushSave` and `beforeunload` to persist current camera and ruler state alongside entities and grid pattern.
+  - Updated `openBoard(id)` to save current board before switching, clear selection/history/popovers, reset tool to `'Select'`, and restore the target board's isolated camera, ruler, grid pattern, and entities.
+  - Updated `duplicateBoard(id)` and `importBoard(title, canvasData)` to clone/isolate camera and ruler configurations.
+  - Updated `deleteBoard` to reset camera, ruler, history, selection, and tools to pristine default when no boards remain.
 
 ### Milestone 19: Clear Canvas Action & Undo History Integration
 - [x] **19.1 Connect Clear Canvas in EraserPopover:**
@@ -237,6 +240,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `15.2 Middle-Click (Scroll Wheel) Hold & Drag Quick Erase (Milestone 15 complete)`
-- **Current Active Sub-Task:** `Milestone 15 Complete, Ready for Milestone 18 (Individual Board Session Isolation & Pristine Board Initialization)`
-- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 18 (Individual Board Session Isolation & Pristine Board Initialization) sequentially, verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
+- **Last Completed Sub-Task:** `18.2 Per-Board Canvas State Isolation (Milestone 18 complete)`
+- **Current Active Sub-Task:** `Milestone 18 Complete, Ready for Milestone 17 ("Enhance Inked Shapes" Engine & Settings Toggle)`
+- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 17 ('Enhance Inked Shapes' Engine & Settings Toggle) sequentially: inspect Blueboard bundle for shape recognition algorithms, implement ShapeRecognitionEngine.ts, add settings toggle in TopBar.tsx, and automatically morph rough inked strokes into clean vector shapes on release. Verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`

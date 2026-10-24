@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Interactive Ruler Engine & Magnetic Snapping
  *
  * Reverse-Engineered from REA Evidence:
@@ -69,6 +69,30 @@ class RulerEngine {
       inkingStore.setRulerActive(active);
       this.notify();
     }
+  }
+
+  /**
+   * Resets ruler to pristine default state (hidden, 0° angle, centered at origin)
+   */
+  public reset(x = 0, y = 0, angle = 0, isVisible = false) {
+    this.state.x = x;
+    this.state.y = y;
+    this.state.angle = angle;
+    this.state.isActive = isVisible;
+    inkingStore.setRulerActive(isVisible);
+    this.notify();
+  }
+
+  /**
+   * Restores persisted per-board ruler coordinates, angle, and visibility
+   */
+  public restoreState(saved: { x: number; y: number; angle: number; isVisible: boolean }) {
+    this.state.x = saved.x ?? 0;
+    this.state.y = saved.y ?? 0;
+    this.state.angle = saved.angle ?? 0;
+    this.state.isActive = Boolean(saved.isVisible);
+    inkingStore.setRulerActive(this.state.isActive);
+    this.notify();
   }
 
   public setPosition(x: number, y: number) {
