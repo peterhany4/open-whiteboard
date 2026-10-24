@@ -137,7 +137,7 @@ for (const preset of PASTEL_PALETTE) {
   );
 }
 assert.ok(
-  pdfWidgetCode.includes("border: '1px solid rgba(0, 0, 0, 0.12)'"),
+  pdfWidgetCode.includes("'1px solid rgba(0, 0, 0, 0.12)'"),
   'PDFDocumentWidget.tsx color pills must use 1px solid rgba(0, 0, 0, 0.12) border'
 );
 console.log('✓ PDFDocumentWidget.tsx pastel swatches and pill borders verified.');

@@ -381,26 +381,160 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     if (!textToolbar || textToolbar.rects.length === 0) return;
 
     const camera = canvasStore.getState().camera;
-    const newStrokes: InkStrokeEntity[] = [];
+    const allEntities = sceneStore.getAllEntities();
+    const highlighters = allEntities.filter(
+      (ent): ent is InkStrokeEntity =>
+        ent.type === 'stroke' && Boolean((ent as any).isHighlighter || ent.tool === 'highlighter')
+    );
 
-    textToolbar.rects.forEach((rect, idx) => {
+    // Convert each screen rect to world line geometry
+    const worldLines = textToolbar.rects.map((rect) => {
       const midY = rect.top + rect.height / 2;
       const startPt = screenToWorld({ x: rect.left, y: midY }, camera);
       const endPt = screenToWorld({ x: rect.right, y: midY }, camera);
-
+      const minX = Math.min(startPt.x, endPt.x);
+      const maxX = Math.max(startPt.x, endPt.x);
       const strokeWidth = Math.max(10, rect.height / camera.scale);
-      const points: InkStrokePoint[] = [
-        { x: startPt.x, y: startPt.y, pressure: 0.5 },
-        { x: endPt.x, y: endPt.y, pressure: 0.5 },
-      ];
+      return {
+        startPt,
+        endPt,
+        minX,
+        maxX,
+        midY: (startPt.y + endPt.y) / 2,
+        height: strokeWidth,
+      };
+    });
 
-      const bounds = computeStrokeBounds(points, strokeWidth, false);
-      const stroke: InkStrokeEntity = {
+    const isColorEqual = (c1: string, c2: string) => c1.trim().toLowerCase() === c2.trim().toLowerCase();
+
+    // Helper: checks if a stroke substantially covers or overlaps a line
+    const doesStrokeOverlapLine = (
+      stroke: InkStrokeEntity,
+      line: { minX: number; maxX: number; midY: number; height: number }
+    ) => {
+      const sBounds = stroke.bounds;
+      const sMidY = (sBounds.minY + sBounds.maxY) / 2;
+      const sHeight = Math.max(8, sBounds.maxY - sBounds.minY);
+
+      // Must be vertically aligned on the same text line
+      const yDist = Math.abs(sMidY - line.midY);
+      const maxAllowedYDist = Math.max(sHeight, line.height) * 0.85;
+      if (yDist > maxAllowedYDist) return false;
+
+      // Must horizontally overlap
+      const overlapX = Math.max(0, Math.min(sBounds.maxX, line.maxX) - Math.max(sBounds.minX, line.minX));
+      const lineWidth = line.maxX - line.minX;
+      const strokeWidth = sBounds.maxX - sBounds.minX;
+      if (lineWidth <= 0 || strokeWidth <= 0) return false;
+
+      return overlapX >= 8 && (overlapX / lineWidth >= 0.35 || overlapX / strokeWidth >= 0.35);
+    };
+
+    // Find all highlighter strokes that overlap any selected line
+    const overlappingStrokes = highlighters.filter((stroke) =>
+      worldLines.some((line) => doesStrokeOverlapLine(stroke, line))
+    );
+
+    // Check if any overlapping stroke has the exact same color
+    const sameColorStrokes = overlappingStrokes.filter((stroke) => isColorEqual(stroke.color, color));
+
+    if (sameColorStrokes.length > 0) {
+      // 1. UNDO / TOGGLE OFF HIGHLIGHT
+      const strokesToRemove: string[] = [];
+      const replacementStrokes: InkStrokeEntity[] = [];
+
+      for (const stroke of sameColorStrokes) {
+        strokesToRemove.push(stroke.id);
+
+        // If this stroke was a 2-point straight line and user selected only a sub-part of it,
+        // keep the non-selected left/right segments so partial un-highlight works cleanly
+        if (stroke.points.length === 2) {
+          const p1 = stroke.points[0];
+          const p2 = stroke.points[1];
+          const strokeStartX = Math.min(p1.x, p2.x);
+          const strokeEndX = Math.max(p1.x, p2.x);
+          const strokeY = (p1.y + p2.y) / 2;
+
+          const matchingLines = worldLines.filter((line) => doesStrokeOverlapLine(stroke, line));
+          if (matchingLines.length > 0) {
+            const selMinX = Math.min(...matchingLines.map((l) => l.minX));
+            const selMaxX = Math.max(...matchingLines.map((l) => l.maxX));
+
+            // Left remainder (>= 16px)
+            if (selMinX - strokeStartX >= 16) {
+              const leftPts: InkStrokePoint[] = [
+                { x: strokeStartX, y: strokeY, pressure: 0.5 },
+                { x: selMinX, y: strokeY, pressure: 0.5 },
+              ];
+              replacementStrokes.push({
+                ...stroke,
+                id: `hl_pdf_${Date.now()}_l_${Math.random().toString(36).slice(2, 6)}`,
+                points: leftPts,
+                bounds: computeStrokeBounds(leftPts, stroke.width, false),
+                updatedAt: Date.now(),
+              });
+            }
+
+            // Right remainder (>= 16px)
+            if (strokeEndX - selMaxX >= 16) {
+              const rightPts: InkStrokePoint[] = [
+                { x: selMaxX, y: strokeY, pressure: 0.5 },
+                { x: strokeEndX, y: strokeY, pressure: 0.5 },
+              ];
+              replacementStrokes.push({
+                ...stroke,
+                id: `hl_pdf_${Date.now()}_r_${Math.random().toString(36).slice(2, 6)}`,
+                points: rightPts,
+                bounds: computeStrokeBounds(rightPts, stroke.width, false),
+                updatedAt: Date.now(),
+              });
+            }
+          }
+        }
+      }
+
+      const snapshotOld = sameColorStrokes;
+      historyManager.execute({
+        name: 'Remove PDF Text Highlight',
+        execute: () => {
+          for (const id of strokesToRemove) {
+            sceneStore.removeEntity(id, false);
+          }
+          for (const rep of replacementStrokes) {
+            sceneStore.addEntity(rep, false);
+          }
+        },
+        undo: () => {
+          for (const rep of replacementStrokes) {
+            sceneStore.removeEntity(rep.id, false);
+          }
+          for (const orig of snapshotOld) {
+            sceneStore.addEntity(orig, false);
+          }
+        },
+      });
+
+      window.getSelection()?.removeAllRanges();
+      setTextToolbar(null);
+      return;
+    }
+
+    // 2. APPLY / CHANGE HIGHLIGHT COLOR
+    // Remove any overlapping strokes of a different color so they don't awkwardly stack
+    const diffColorStrokes = overlappingStrokes.filter((stroke) => !isColorEqual(stroke.color, color));
+
+    const newStrokes: InkStrokeEntity[] = worldLines.map((line, idx) => {
+      const points: InkStrokePoint[] = [
+        { x: line.startPt.x, y: line.startPt.y, pressure: 0.5 },
+        { x: line.endPt.x, y: line.endPt.y, pressure: 0.5 },
+      ];
+      const bounds = computeStrokeBounds(points, line.height, false);
+      return {
         id: `hl_pdf_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
         type: 'stroke',
         tool: 'highlighter',
         color,
-        width: strokeWidth,
+        width: line.height,
         points,
         isHighlighter: true,
         zIndex: 150,
@@ -408,12 +542,15 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      newStrokes.push(stroke);
     });
 
+    const oldSnapshot = diffColorStrokes;
     historyManager.execute({
       name: 'Highlight PDF Text',
       execute: () => {
+        for (const old of oldSnapshot) {
+          sceneStore.removeEntity(old.id, false);
+        }
         for (const s of newStrokes) {
           sceneStore.addEntity(s, false);
         }
@@ -421,6 +558,9 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
       undo: () => {
         for (const s of newStrokes) {
           sceneStore.removeEntity(s.id, false);
+        }
+        for (const old of oldSnapshot) {
+          sceneStore.addEntity(old, false);
         }
       },
     });
@@ -1082,32 +1222,90 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
           }}
         >
           {/* 5 Quick Highlight Edge/Acrobat Pastel Color Pills */}
-          {[
-            { name: 'Yellow', color: '#FFE843' },
-            { name: 'Mint Green', color: '#95F09B' },
-            { name: 'Sky Cyan', color: '#7AE3FF' },
-            { name: 'Pastel Pink', color: '#FF9EC6' },
-            { name: 'Lavender Purple', color: '#D4B8FF' },
-          ].map((preset) => (
-            <button
-              key={preset.name}
-              title={`Highlight ${preset.name}`}
-              onClick={(e) => handleApplyHighlight(preset.color, e)}
-              style={{
-                width: '20px',
-                height: '20px',
-                borderRadius: '50%',
-                backgroundColor: preset.color,
-                border: '1px solid rgba(0, 0, 0, 0.12)',
-                cursor: 'pointer',
-                padding: 0,
-                transition: 'transform 0.1s ease',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.15)')}
-              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
-            />
-          ))}
+          {(() => {
+            let activeColor: string | null = null;
+            if (textToolbar && textToolbar.rects.length > 0) {
+              const cam = canvasStore.getState().camera;
+              const all = sceneStore.getAllEntities();
+              const hls = all.filter(
+                (ent): ent is InkStrokeEntity =>
+                  ent.type === 'stroke' && Boolean((ent as any).isHighlighter || ent.tool === 'highlighter')
+              );
+              for (const r of textToolbar.rects) {
+                const my = r.top + r.height / 2;
+                const sp = screenToWorld({ x: r.left, y: my }, cam);
+                const ep = screenToWorld({ x: r.right, y: my }, cam);
+                const minX = Math.min(sp.x, ep.x);
+                const maxX = Math.max(sp.x, ep.x);
+                const lineMidY = (sp.y + ep.y) / 2;
+                const h = Math.max(10, r.height / cam.scale);
+                for (const s of hls) {
+                  const sm = (s.bounds.minY + s.bounds.maxY) / 2;
+                  const sh = Math.max(8, s.bounds.maxY - s.bounds.minY);
+                  if (Math.abs(sm - lineMidY) <= Math.max(sh, h) * 0.85) {
+                    const ox = Math.max(0, Math.min(s.bounds.maxX, maxX) - Math.max(s.bounds.minX, minX));
+                    const lw = maxX - minX;
+                    const sw = s.bounds.maxX - s.bounds.minX;
+                    if (ox >= 8 && (ox / lw >= 0.35 || ox / sw >= 0.35)) {
+                      activeColor = s.color.toLowerCase();
+                      break;
+                    }
+                  }
+                }
+                if (activeColor) break;
+              }
+            }
+
+            return [
+              { name: 'Yellow', color: '#FFE843' },
+              { name: 'Mint Green', color: '#95F09B' },
+              { name: 'Sky Cyan', color: '#7AE3FF' },
+              { name: 'Pastel Pink', color: '#FF9EC6' },
+              { name: 'Lavender Purple', color: '#D4B8FF' },
+            ].map((preset) => {
+              const isActive = activeColor === preset.color.toLowerCase();
+              return (
+                <button
+                  key={preset.name}
+                  title={isActive ? `Remove ${preset.name} highlight` : `Highlight ${preset.name}`}
+                  onClick={(e) => handleApplyHighlight(preset.color, e)}
+                  style={{
+                    position: 'relative',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    backgroundColor: preset.color,
+                    border: isActive
+                      ? '2px solid var(--themePrimary, #0078D4)'
+                      : isDark
+                      ? '1px solid rgba(255, 255, 255, 0.24)'
+                      : '1px solid rgba(0, 0, 0, 0.12)',
+                    boxShadow: isActive
+                      ? '0 0 0 1px #0078D4, 0 2px 5px rgba(0,0,0,0.25)'
+                      : '0 1px 3px rgba(0,0,0,0.15)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'transform 0.1s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.15)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
+                >
+                  {isActive && (
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="#1F1F1F">
+                      <path
+                        d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"
+                        stroke="#1F1F1F"
+                        strokeWidth="1.2"
+                      />
+                    </svg>
+                  )}
+                </button>
+              );
+            });
+          })()}
 
           {/* Vertical Divider */}
           <div
