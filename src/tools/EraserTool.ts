@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Dual-Mode Eraser Engine (StrokeEraser & PointEraser)
  *
  * Reverse-Engineered from REA Evidence:
@@ -94,7 +94,7 @@ export class EraserToolEngine {
     camera: CameraMatrix,
     viewportRect?: DOMRect | null
   ) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 && e.button !== 1) return;
 
     this.isErasing = true;
     this.lastPosition = screenToWorld({ x: e.clientX, y: e.clientY }, camera, viewportRect);

@@ -3,7 +3,7 @@ import { useCanvasStore, canvasStore } from '../store/canvasStore';
 import { useVisibleEntities, sceneStore } from '../store/sceneStore';
 import { selectionStore } from '../store/selectionStore';
 import { inkingStore, useInkingStore } from '../store/inkingStore';
-import type { PenSlot } from '../store/inkingStore';
+import type { PenSlot, InkingTool } from '../store/inkingStore';
 import { useTheme } from '../theme/ThemeProvider';
 import { penTool } from '../tools/PenTool';
 import type { LiveStrokeState } from '../tools/PenTool';
@@ -95,6 +95,11 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   // References for active panning and gestures
   const isDraggingRef = useRef(false);
   const lastPointerRef = useRef<Point>({ x: 0, y: 0 });
+  const isRightClickPanningRef = useRef(false);
+  const hasRightClickDraggedRef = useRef(false);
+  const rightClickStartPosRef = useRef<Point>({ x: 0, y: 0 });
+  const isMiddleClickErasingRef = useRef(false);
+  const previousToolRef = useRef<InkingTool | null>(null);
   const touchStateRef = useRef<{
     initialDistance: number;
     initialScale: number;
@@ -538,13 +543,61 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   // 4. Pointer Handlers (Panning & Inking Tools: Select, Hand, Pen, Highlighter, Laser, Eraser)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const activeTool = inkingStore.getState().selectedTool;
-    const isMiddleButton = e.button === 1;
+    const target = e.target as HTMLElement;
+
+    // Check if clicked over interactive floating UI
+    const isInteractiveFloatingUI = Boolean(
+      target.closest &&
+        target.closest(
+          '#whiteboard-ink-toolbar, .wb-topbar, #topbar, .wb-acrylic-topbar, .wb-pdf-header, .wb-modal-overlay, #create-panel-menu, #wb-create-flyout, #wb-selection-context-menu, [id^="wb-context-"], .wb-selection-action-btn, .wb-color-picker-popover, #wb-selection-container button, [id^="wb-note-"] textarea, [id^="wb-text-"] textarea'
+        )
+    );
+
+    // 1. Right-Click Hold & Drag Viewport Pan (Milestone 15.1)
+    if (e.button === 2) {
+      if (!isInteractiveFloatingUI) {
+        e.preventDefault();
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore if pointer capture fails
+        }
+        isDraggingRef.current = true;
+        isRightClickPanningRef.current = true;
+        hasRightClickDraggedRef.current = false;
+        rightClickStartPosRef.current = { x: e.clientX, y: e.clientY };
+        lastPointerRef.current = { x: e.clientX, y: e.clientY };
+        canvasStore.setIsPanning(true);
+        return;
+      }
+    }
+
+    // 2. Middle-Click (Scroll Wheel) Hold & Drag Quick Erase (Milestone 15.2)
+    if (e.button === 1) {
+      e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture fails
+      }
+      previousToolRef.current = activeTool;
+      isMiddleClickErasingRef.current = true;
+      const rect = viewportRef.current?.getBoundingClientRect();
+      eraserTool.onPointerDown(e, camera, rect);
+      return;
+    }
+
+    // 3. Spacebar + Left Click or Hand Tool Pan
     const isSpacePan = isSpacePressed && e.button === 0;
     const isHandPan = activeTool === 'Hand' && e.button === 0;
 
-    if (isMiddleButton || isSpacePan || isHandPan) {
+    if (isSpacePan || isHandPan) {
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture fails
+      }
       isDraggingRef.current = true;
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
       canvasStore.setIsPanning(true);
@@ -552,7 +605,6 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
     }
 
     if (e.button === 0) {
-      const target = e.target as HTMLElement;
       const rect = viewportRef.current?.getBoundingClientRect();
 
       if (rect) {
@@ -572,7 +624,9 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         );
         if (!isInteractive) {
           e.preventDefault();
-          e.currentTarget.setPointerCapture(e.pointerId);
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {}
           selectTool.onPointerDown(e, camera, rect);
         }
         return;
@@ -580,39 +634,69 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
 
       if (activeTool.startsWith('Pen')) {
         e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
         penTool.onPointerDown(e, camera, rect);
       } else if (activeTool === 'Highlighter') {
         e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
         highlighterTool.onPointerDown(e, camera, rect);
       } else if (activeTool === 'Laser') {
         e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
         laserTool.onPointerDown(e, camera, rect);
       } else if (activeTool === 'Eraser') {
         e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
         eraserTool.onPointerDown(e, camera, rect);
       } else if (activeTool === 'FreeformLasso') {
         e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
         lassoTool.onPointerDown(e, camera, rect);
       }
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 1. Active Viewport Panning (Right-Click Drag, Space+Drag, Hand Drag)
     if (isDraggingRef.current) {
       e.preventDefault();
       const dx = e.clientX - lastPointerRef.current.x;
       const dy = e.clientY - lastPointerRef.current.y;
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
+
+      if (isRightClickPanningRef.current) {
+        const dist = Math.hypot(
+          e.clientX - rightClickStartPosRef.current.x,
+          e.clientY - rightClickStartPosRef.current.y
+        );
+        if (dist > 3) {
+          hasRightClickDraggedRef.current = true;
+        }
+      }
+
       canvasStore.panBy(dx, dy);
       return;
     }
 
     const rect = viewportRef.current?.getBoundingClientRect();
+
+    // 2. Middle-Click Quick Erase Drag (Milestone 15.2)
+    if (isMiddleClickErasingRef.current) {
+      e.preventDefault();
+      eraserTool.onPointerMove(e, camera, rect);
+      return;
+    }
+
     const activeTool = inkingStore.getState().selectedTool;
 
     // Track hover position for real-time dynamic inking cursors (Milestone 12.2)
@@ -658,8 +742,10 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 1. Release Viewport Pan (Right-Click, Space, Hand)
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
+      isRightClickPanningRef.current = false;
       canvasStore.setIsPanning(false);
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
@@ -669,8 +755,27 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       return;
     }
 
-    const activeTool = inkingStore.getState().selectedTool;
     const rect = viewportRef.current?.getBoundingClientRect();
+
+    // 2. Release Middle-Click Quick Erase (Milestone 15.2)
+    if (isMiddleClickErasingRef.current) {
+      isMiddleClickErasingRef.current = false;
+      eraserTool.onPointerUp(e);
+      eraserTool.cancel();
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // Ignore if already released
+      }
+
+      if (previousToolRef.current) {
+        inkingStore.selectTool(previousToolRef.current);
+        previousToolRef.current = null;
+      }
+      return;
+    }
+
+    const activeTool = inkingStore.getState().selectedTool;
 
     if (activeTool === 'Select') {
       selectTool.onPointerUp(e, camera, rect);
@@ -701,7 +806,16 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
+      isRightClickPanningRef.current = false;
       canvasStore.setIsPanning(false);
+    }
+    if (isMiddleClickErasingRef.current) {
+      isMiddleClickErasingRef.current = false;
+      eraserTool.cancel();
+      if (previousToolRef.current) {
+        inkingStore.selectTool(previousToolRef.current);
+        previousToolRef.current = null;
+      }
     }
     const activeTool = inkingStore.getState().selectedTool;
     if (activeTool === 'Select') {
@@ -732,7 +846,9 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   const handlePointerLeave = () => {
     setIsHoveringCanvas(false);
     setHoverPoint(null);
-    eraserTool.onPointerLeave();
+    if (!isMiddleClickErasingRef.current) {
+      eraserTool.onPointerLeave();
+    }
   };
 
   // 4. Touch Handlers for Two-Finger Pan and Pinch-Zoom
@@ -915,6 +1031,17 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
+      onContextMenu={(e) => {
+        // Suppress native browser context menu during or following right-click drag pan (Milestone 15.1)
+        const target = e.target as HTMLElement;
+        const isEditable =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (!isEditable) {
+          e.preventDefault();
+        }
+      }}
       style={{
         width: '100%',
         height: '100%',
@@ -1177,7 +1304,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       </div>
 
       {/* 5. Real-Time Dynamic Inking Cursor Overlay (Milestone 12.2) */}
-      {isInkingTool && isHoveringCanvas && hoverPoint && !isPanning && (
+      {isInkingTool && isHoveringCanvas && hoverPoint && !isPanning && !eraserCursor?.isDown && (
         <svg
           id="wb-inking-cursor-overlay"
           style={{

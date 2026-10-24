@@ -191,13 +191,13 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
     - Dark Mode: `#3B3A39` lines / dots (never dim or muddy).
 
 ### Milestone 15: Natural Navigation & Inking Gestures (Right-Click Pan & Middle-Click Erase)
-- [ ] **15.1 Right-Click Hold & Drag Viewport Pan:**
-  - In `src/canvas/CanvasViewport.tsx`, intercept pointerdown with `button === 2` (right click).
-  - Suppress context menu during drag (`e.preventDefault()`) and smoothly translate the camera matrix in real time without having to switch to the Hand / Pan tool.
-- [ ] **15.2 Middle-Click (Scroll Wheel) Hold & Drag Quick Erase:**
-  - Intercept pointerdown with `button === 1` (middle click / scroll wheel).
-  - Temporarily activate `EraserTool` at the cursor position and erase overlapping ink strokes/segments on drag.
-  - Automatically revert to the previously active tool immediately upon pointer up.
+- [x] **15.1 Right-Click Hold & Drag Viewport Pan:**
+  - In `src/canvas/CanvasViewport.tsx`, intercepted `pointerdown` with `e.button === 2` (right click): captures pointer, enters panning mode (`canvasStore.setIsPanning(true)`), updates cursor feedback to `'grabbing'`, and translates the camera matrix smoothly on drag without needing to switch to the Hand tool.
+  - Suppressed the native browser context menu on the canvas surface and during/following right-click pan drags (`e.preventDefault()`).
+- [x] **15.2 Middle-Click (Scroll Wheel) Hold & Drag Quick Erase:**
+  - In `src/canvas/CanvasViewport.tsx`, intercepted `pointerdown` with `e.button === 1` (middle click / scroll wheel): saves the previously active tool, activates Quick Erase mode, and forwards pointer events directly to `eraserTool`.
+  - Updated `src/tools/EraserTool.ts` to allow middle-click (`e.button === 1`) in `onPointerDown`, displaying the live velocity eraser ring overlay and erasing overlapping strokes/segments in real time with Undo/Redo integration.
+  - Automatically commits erased strokes, cleanly dismisses the eraser ring overlay, and restores the user's previously active inking tool upon releasing the middle mouse button.
 
 ### Milestone 16: Refined Keyboard Shortcuts (`Alt+W`, `Alt+X`) & TopBar Header Cleanup
 - [x] **16.1 Re-map Ergonomic Shortcuts (`Alt+W` Pen 1, `Alt+X` Eraser) & Strict Shortcut Whitelist:**
