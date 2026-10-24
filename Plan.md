@@ -208,15 +208,18 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Streamline header right section: Export menu ➔ Settings / Theme button ➔ Window caption controls with consistent gap and vertical centering.
 
 ### Milestone 17: "Enhance Inked Shapes" Engine & Settings Toggle (Inspect ➔ Trace ➔ Recreate)
-- [ ] **17.1 REA Investigation & Evidence Trace for Shape Recognition:**
-  - Inspect Blueboard bundle modules for shape recognition algorithms (`inkToShape`, `shapeRecognition`, corner detection, aspect ratio fitting).
-- [ ] **17.2 Geometric Stroke Classification Engine:**
-  - Implement `src/tools/ShapeRecognitionEngine.ts`:
-    - Polygon vertex simplification (Ramer-Douglas-Peucker) for corner detection.
-    - Geometric classifiers for Circle / Ellipse (circularity ratio 4*pi*area/perimeter^2), Rectangle / Square (4 perpendicular corners), Triangle (3 corners), Diamond, Straight Line, and Arrow.
-- [ ] **17.3 Settings Toggle & Automatic Vector Shape Replacement:**
-  - Add "Enhance inked shapes" toggle switch in `TopBar.tsx` Settings menu (persisted in `canvasStore`).
-  - On pen stroke release, if enabled and confidence > 0.85, morph the rough stroke into a clean vector `ShapeEntity` preserving stroke color, thickness, and bounding box.
+- [x] **17.1 REA Investigation & Evidence Trace for Shape Recognition:**
+  - Inspected Blueboard bundle modules (Module 40049 and Module 84781932: `WetShapeRecognitionHappened`, `DrawAndHoldRecognitionHappened`, `AddBeautifiedInk`, `InkToShape`). Implemented a 100% offline, zero-latency client-side geometric recognition engine running instantly on `onPointerUp`.
+- [x] **17.2 Geometric Stroke Classification Engine:**
+  - Implemented `src/tools/ShapeRecognitionEngine.ts`:
+    - Contour pre-filtering (point count, path length, and endpoint closure heuristics).
+    - Ramer-Douglas-Peucker (RDP) adaptive polygon simplification.
+    - Geometric classifiers for Circle / Ellipse (circularity $\ge 0.70$, low radial variance), Rectangle / Square (4 corners, $90^\circ \pm 25^\circ$ angles, aspect ratio square snap), Triangle (3 corners, angle sum $\approx 180^\circ$), Diamond (4 corners at cardinal midpoints), and Straight Line (straightness $\ge 0.92$, $7^\circ$ magnetic horizontal/vertical snapping).
+- [x] **17.3 Settings Toggle & Automatic Vector Shape Replacement:**
+  - Added `isEnhanceInkedShapesEnabled` in `src/store/canvasStore.ts` (persisted in `localStorage` under `'wb-enhance-inked-shapes'`).
+  - Added Fluent "Enhance inked shapes" toggle row in `TopBar.tsx` Settings popover.
+  - In `src/tools/PenTool.ts` (`onPointerUp`), when enabled and ruler is inactive, recognized geometric strokes (confidence $\ge 0.85$) are automatically morphed into clean vector `ShapeEntity` instances matching pen color and thickness with full Undo/Redo (`Ctrl+Z`) support.
+
 ### Milestone 18: Individual Board Session Isolation & Pristine Board Initialization
 - [x] **18.1 Clean New Board Initialization:**
   - Added `rulerEngine.reset(x, y, angle, isVisible)` to reset ruler position, angle (0°), and visibility (`false`) in `src/tools/RulerEngine.ts`.
@@ -240,6 +243,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `18.2 Per-Board Canvas State Isolation (Milestone 18 complete)`
-- **Current Active Sub-Task:** `Milestone 18 Complete, Ready for Milestone 17 ("Enhance Inked Shapes" Engine & Settings Toggle)`
-- **Next Recommended Prompt:** `"Read @Plan.md. Execute Milestone 17 ('Enhance Inked Shapes' Engine & Settings Toggle) sequentially: inspect Blueboard bundle for shape recognition algorithms, implement ShapeRecognitionEngine.ts, add settings toggle in TopBar.tsx, and automatically morph rough inked strokes into clean vector shapes on release. Verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
+- **Last Completed Sub-Task:** `17.3 Settings Toggle & Automatic Vector Shape Replacement (Milestone 17 complete)`
+- **Current Active Sub-Task:** `All Milestones (0 through 19) Completed & Verified`
+- **Next Recommended Prompt:** `"Review full project status and test desktop application build."`

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Canvas Navigation & Shell UI Store
  *
  * Reverse-Engineered from REA Evidence:
@@ -51,6 +51,9 @@ export interface CanvasState {
   activeCreateCategory: CreateCategory;
   isSettingsOpen: boolean;
 
+  // Inking & AI settings
+  isEnhanceInkedShapesEnabled: boolean;
+
   // History state
   canUndo: boolean;
   canRedo: boolean;
@@ -59,6 +62,13 @@ export interface CanvasState {
 
 const ZOOM_STEP = 1.25;
 const GRID_STORAGE_KEY = 'whiteboard:gridPattern';
+const ENHANCE_SHAPES_STORAGE_KEY = 'wb-enhance-inked-shapes';
+
+function getInitialEnhanceShapes(): boolean {
+  if (typeof window === 'undefined') return true;
+  const saved = localStorage.getItem(ENHANCE_SHAPES_STORAGE_KEY);
+  return saved !== null ? saved === 'true' : true;
+}
 
 function getInitialGridPattern(): GridPatternType {
   if (typeof window === 'undefined') return 'Dot';
@@ -88,6 +98,7 @@ const initialCanvasState: CanvasState = {
   isCreatePanelOpen: false,
   activeCreateCategory: 'Content',
   isSettingsOpen: false,
+  isEnhanceInkedShapesEnabled: getInitialEnhanceShapes(),
   canUndo: false,
   canRedo: false,
   undoStackLength: 0,
@@ -318,6 +329,24 @@ export const canvasStore = {
   setHistoryStatus: (canUndo: boolean, canRedo: boolean) => {
     currentCanvasState = { ...currentCanvasState, canUndo, canRedo };
     emitCanvasChange();
+  },
+
+  // Enhance Inked Shapes setting
+  setEnhanceInkedShapes: (enabled: boolean) => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(ENHANCE_SHAPES_STORAGE_KEY, String(enabled));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+    currentCanvasState = { ...currentCanvasState, isEnhanceInkedShapesEnabled: enabled };
+    emitCanvasChange();
+  },
+
+  toggleEnhanceInkedShapes: () => {
+    const nextVal = !currentCanvasState.isEnhanceInkedShapesEnabled;
+    canvasStore.setEnhanceInkedShapes(nextVal);
   },
 };
 

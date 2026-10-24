@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Open Whiteboard — Ballpoint & Felt-Tip Pen Smoothing Engine
  *
  * Reverse-Engineered from REA Evidence:
@@ -17,12 +17,14 @@
 
 import type { CameraMatrix, Point } from '../canvas/camera';
 import { screenToWorld } from '../canvas/camera';
-import type { InkStrokeEntity, InkStrokePoint, AABB } from '../canvas/sceneGraph';
+import type { InkStrokeEntity, InkStrokePoint, ShapeEntity, AABB } from '../canvas/sceneGraph';
 import { computeStrokeBounds } from '../canvas/sceneGraph';
 import { sceneStore } from '../store/sceneStore';
 import { inkingStore } from '../store/inkingStore';
+import { canvasStore } from '../store/canvasStore';
 import type { PenArrowMode } from '../store/inkingStore';
 import { rulerEngine } from './RulerEngine';
+import { shapeRecognitionEngine } from './ShapeRecognitionEngine';
 
 export interface RawInputPoint {
   x: number; // Screen clientX
@@ -222,7 +224,7 @@ export class PenToolEngine {
    */
   public onPointerUp(
     _e?: React.PointerEvent<HTMLDivElement> | PointerEvent
-  ): InkStrokeEntity | null {
+  ): InkStrokeEntity | ShapeEntity | null {
     if (!this.isDrawing) return null;
     this.isDrawing = false;
 
@@ -249,6 +251,45 @@ export class PenToolEngine {
     const avgPressure = finalPoints.length > 0 ? totalPressure / finalPoints.length : 0.5;
     const modulatedWidth = parseFloat((baseThickness * (0.4 + 1.2 * avgPressure)).toFixed(2));
     const finalWidth = Math.max(1, Math.min(baseThickness * 1.8, modulatedWidth));
+
+    // Enhance Inked Shapes recognition (Milestone 17)
+    // Only apply when ruler is inactive and Enhance Inked Shapes is enabled
+    const isEnhanceEnabled = canvasStore.getState().isEnhanceInkedShapesEnabled;
+    const isRulerActive = rulerEngine.getState().isActive;
+
+    if (isEnhanceEnabled && !isRulerActive && finalPoints.length >= 8) {
+      const recognized = shapeRecognitionEngine.recognize(finalPoints);
+      if (recognized.recognized && recognized.shapeType && recognized.confidence >= 0.85) {
+        const timestamp = Date.now();
+        const shapeEntity: ShapeEntity = {
+          id: `shape_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
+          type: 'shape',
+          x: Math.round(recognized.x),
+          y: Math.round(recognized.y),
+          width: Math.round(recognized.width),
+          height: Math.round(recognized.height),
+          shapeType: recognized.shapeType,
+          strokeColor: color,
+          fillColor: 'transparent',
+          strokeWidth: Math.max(2, Math.round(finalWidth)),
+          zIndex: 200,
+          bounds: recognized.bounds,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+
+        // Commit to persistent spatial sceneStore with Undo/Redo capability
+        sceneStore.addEntity(shapeEntity, true);
+
+        // Clear live preview & buffers
+        this.emitLiveStroke(null);
+        this.rawPoints = [];
+        this.filteredPoints = [];
+        this.catmullBuffer = [];
+
+        return shapeEntity;
+      }
+    }
 
     const hasArrows = arrowMode !== 'NoArrow';
     const bounds: AABB = computeStrokeBounds(finalPoints, finalWidth, hasArrows);
