@@ -41,6 +41,15 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Select / Pan Navigation & Global Shortcuts** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/40049.7fda10c837609f18159b.js`, `91464.7aeadf3b6ddc55b8cdc3.js`, `BoardEditorComponent-84781932.a42f38c8c9aa0e756cd7.js` | Modules 179019, 40049, 804397, 84781932 | Select Tool (Arrow cursor, default mode on board entry, interactive clicks on canvas objects without ink stroke collision), Hand / Pan Tool (left-drag pan mode), comprehensive keyboard shortcuts engine (V/S=Select, H=Hand, P/1-5=Pens, X=Highlighter, E=Eraser, L=Lasso, R=Ruler, N=Note, T=Text, Ctrl+Z/Y, Ctrl+D, Ctrl+A, Delete, Esc, +/- zoom), shortcut badge tooltips |
 | **Electron Desktop Packaging & Native Windows Integration** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/startup-nativewindows.bd7de3895048f6c0aadd.js`, `blueboard/chunks/appwrapper.14452b135005dd7a8466.js` | Modules startup-nativewindows, appwrapper, 939487 | Electron main/preload bridge, frameless acrylic/mica window styling with native Windows caption buttons (Minimize, Maximize/Restore, Close), AI image generation (`generate_image`) for custom app & installer branding + multi-resolution icon generation (.ico 16-256px from signature SVG), local filesystem save/load (.whiteboard project files), production packaging (electron-builder, NSIS Windows installer & portable exe) |
 | **Selection Engine, Action Bar, Native Dialogs & UX Polish** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `BoardEditorComponent-84781932.*.js`, `boardpicker.*.js`, `appwrapper.*.js` | Modules 84781932, 179019, 517955 | Select Tool single-click hit testing & rectangular marquee group selection, floating context menu event propagation fix, native Electron file import without focus traps / ESC key, default launch to Board Picker, dark mode context menu contrast |
+| **Interactive PDF Document Viewer** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `40049.*.js` | Modules 93425, 560673 | PDF.js continuous scroll viewer widget on canvas, selectable text layer with native copy-paste, coordinate-synchronized inking layer (pen/highlighter strokes track document scrolling) |
+| **Tool Cursors & Chisel Highlighter Icon** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/65345.*.js`, `45330.*.js` | Modules 65345, 807952 | Wide-body chisel-cut fluorescent marker icon, dynamic tool cursors (precision crosshair dot for pen, chisel nib bounding box for highlighter, rings for eraser) |
+| **Laser Active Tracking & Glow Physics** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/65345.*.js`, `BoardEditorComponent-84781932.*.js` | Modules 65345, 272120, 84781932 | Continuous hover tracking laser focal bead with radial Gaussian glow halo, decaying trail ribbon physics |
+| **Adaptive Canvas Paper Theme & Grid Contrast** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/theme/tokens.ts`, `src/canvas/grid.ts` | Modules 517955 | Automatic Mode-Driven Canvas Surface (#FFFFFF in Light, #1E1E1E in Dark), crisp contrast grid lines (#D2D0CE Light, #3B3A39 Dark), removal of redundant paper color swatches |
+| **Pro Navigation & Quick Inking Gestures** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/canvas/CanvasViewport.tsx`, `src/canvas/camera.ts` | Modules 84781932, 40049 | Right-click drag viewport pan with context menu suppression, middle-click (wheel) drag quick erase without tool switching |
+| **Shortcuts & TopBar Action Cleanup** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/tools/ShortcutEngine.ts`, `src/components/header/TopBar.tsx` | Modules 40049 | Ergonomic shortcuts (Alt+W for Pen 1, Alt+X for Eraser), removal of unused mockup buttons (Copilot, Share) |
+| **Enhance Inked Shapes (Ink-to-Shape)** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/45330.*.js`, `8854.*.js`, `93425.*.js` | Modules 45330, 8854 | Geometric stroke classification (Circle, Ellipse, Rectangle, Square, Triangle, Diamond, Line, Arrow), Settings toggle, automatic replacement with clean vector ShapeEntity |
+| **Board Session Isolation & Reset** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/store/boardStore.ts`, `src/store/inkingStore.ts` | Modules 517955, 795434 | Per-board ruler coordinates and camera matrix persistence, pristine initial state on new board creation (Select tool default, ruler hidden & centered, camera reset) |
+| **Clear Canvas Action & History Integration** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `src/components/toolbar/EraserPopover.tsx`, `src/canvas/history.ts` | Modules 40049, 804397 | Clear Canvas action directly connected to sceneStore with undoable ClearCanvasCommand in history.ts |
 
 ---
 
@@ -139,11 +148,92 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
   - Stretch window controls to the full header height (`height: 100%`, `minHeight: 40px`, `alignSelf: 'stretch'`) and place them flush against the top-right corner in both `TopBar.tsx` and `BoardGalleryHeader.tsx` so clicking the corner always triggers the Close button.
   - Ensure titlebars support double-clicking to toggle maximize/restore.
 
+### Milestone 11: Interactive Canvas PDF Document Viewer (Scroll, Select, Copy & Ink Anchoring)
+- [ ] **11.1 Embedded PDF Document Canvas Entity & Renderer:**
+  - Create `PDFDocumentEntity` in `src/canvas/sceneGraph.ts` with `{ id, type: 'pdf_document', x, y, width, height, pdfUrl, pdfData, currentPage, totalPages, isLocked, isPinned }`.
+  - Implement `src/components/canvas/PDFDocumentWidget.tsx`: render high-DPI PDF pages using `pdfjs-dist` with multi-page continuous vertical scroll or page-flip navigation bar.
+- [ ] **11.2 Selectable & Copyable PDF.js Text Layer:**
+  - Embed transparent PDF.js `textLayer` overlay aligned with rendered PDF canvas coordinates.
+  - Enable native text selection, clipboard copy (`Ctrl+C`), and sentence highlighting when the `Select` tool is active.
+- [ ] **11.3 Synchronized Inking & Coordinate Anchoring:**
+  - Support inking over the PDF document: while in Pen, Highlighter, or Laser mode, pointer events draw directly on top of the document.
+  - Anchor ink strokes to document world coordinates so scrolling or translating the PDF automatically keeps all notes and highlighters perfectly in place.
+
+### Milestone 12: Distinct Inking Icons & Tool-Specific Custom Cursors
+- [ ] **12.1 Distinct Chisel Highlighter & Refined Pen SVG Icons:**
+  - Replace the generic highlighter icon with an authentic wide-body, chisel-cut fluorescent marker icon (`HighlighterIcon.tsx`).
+  - Refine `PenIcon.tsx` with a distinct fine-point technical pen nib to prevent visual confusion between Pen and Highlighter slots.
+- [ ] **12.2 Real-Time Dynamic Inking Cursors:**
+  - Implement tool-specific cursors on the canvas:
+    - **Pen**: Precision crosshair dot with a live ring matching the active pen's color swatch and thickness.
+    - **Highlighter**: Semi-transparent rectangular chisel nib showing true stroke thickness & highlight color.
+    - **Laser**: Glowing focal bead with pulsating core.
+    - **Eraser**: Polish dynamic circular ring matching current velocity eraser radius.
+
+### Milestone 13: Laser Pointer Active Tracking Cursor & Trail Glow Physics (REA Trace)
+- [ ] **13.1 Active Hover Tracking Laser Focal Bead:**
+  - Update `src/tools/LaserTool.ts` and `src/canvas/CanvasViewport.tsx` so the laser pointer never disappears when idle.
+  - Render an active glowing laser focal point at pointer coordinates on hover, using authentic Fluent radial glow (`feGaussianBlur`, bright core `#FFFFFF`, outer saturated neon halo).
+- [ ] **13.2 Ribbon Trail Drag Physics & Decaying Animation Sync:**
+  - Interpolate pointer micro-batches into smooth ribbons with spring physics on pointer drag.
+  - Maintain smooth 60fps decay tail (`requestAnimationFrame`) with automatic fade-out when pointer stops.
+
+### Milestone 14: Dynamic Theme Paper Color & High-Contrast Grid Patterns
+- [ ] **14.1 Automatic Mode-Driven Canvas Surface & Palette Cleanup:**
+  - Remove redundant "Canvas Paper Color" palette picker from `TopBar.tsx` Settings menu.
+  - Automatically bind canvas surface to active Theme mode: pure crisp White (`#FFFFFF`) in Light Mode, deep slate (`#1E1E1E`) in Dark Mode.
+- [ ] **14.2 Adaptive High-Contrast Grid Math:**
+  - Update `src/canvas/grid.ts` and `GridBackground.tsx` to ensure all 9 grid patterns (Dot, Cubic, Graph, Rule, Triangular, etc.) have crisp, legible contrast:
+    - Light Mode: `#D2D0CE` lines / dots (never washed out).
+    - Dark Mode: `#3B3A39` lines / dots (never dim or muddy).
+
+### Milestone 15: Natural Navigation & Inking Gestures (Right-Click Pan & Middle-Click Erase)
+- [ ] **15.1 Right-Click Hold & Drag Viewport Pan:**
+  - In `src/canvas/CanvasViewport.tsx`, intercept pointerdown with `button === 2` (right click).
+  - Suppress context menu during drag (`e.preventDefault()`) and smoothly translate the camera matrix in real time without having to switch to the Hand / Pan tool.
+- [ ] **15.2 Middle-Click (Scroll Wheel) Hold & Drag Quick Erase:**
+  - Intercept pointerdown with `button === 1` (middle click / scroll wheel).
+  - Temporarily activate `EraserTool` at the cursor position and erase overlapping ink strokes/segments on drag.
+  - Automatically revert to the previously active tool immediately upon pointer up.
+
+### Milestone 16: Refined Keyboard Shortcuts (`Alt+W`, `Alt+X`) & TopBar Header Cleanup
+- [ ] **16.1 Re-map Ergonomic Shortcuts (`Alt+W` Pen 1, `Alt+X` Eraser):**
+  - Update `src/tools/ShortcutEngine.ts`: register `Alt+W` to activate Pen 1 and `Alt+X` to activate Eraser.
+  - Update shortcut badge tooltips in `InkToolbar.tsx` and help overlays.
+- [ ] **16.2 TopBar Header Action Pruning:**
+  - Remove dead/unused mockup buttons (`Copilot` and `Share`) from `src/components/header/TopBar.tsx`.
+  - Streamline header to board title, save status, export menu, theme toggle, and window caption controls.
+
+### Milestone 17: "Enhance Inked Shapes" Engine & Settings Toggle (Inspect ➔ Trace ➔ Recreate)
+- [ ] **17.1 REA Investigation & Evidence Trace for Shape Recognition:**
+  - Inspect Blueboard bundle modules for shape recognition algorithms (`inkToShape`, `shapeRecognition`, corner detection, aspect ratio fitting).
+- [ ] **17.2 Geometric Stroke Classification Engine:**
+  - Implement `src/tools/ShapeRecognitionEngine.ts`:
+    - Polygon vertex simplification (Ramer-Douglas-Peucker) for corner detection.
+    - Geometric classifiers for Circle / Ellipse (circularity ratio 4*pi*area/perimeter^2), Rectangle / Square (4 perpendicular corners), Triangle (3 corners), Diamond, Straight Line, and Arrow.
+- [ ] **17.3 Settings Toggle & Automatic Vector Shape Replacement:**
+  - Add "Enhance inked shapes" toggle switch in `TopBar.tsx` Settings menu (persisted in `canvasStore`).
+  - On pen stroke release, if enabled and confidence > 0.85, morph the rough stroke into a clean vector `ShapeEntity` preserving stroke color, thickness, and bounding box.
+
+### Milestone 18: Individual Board Session Isolation & Pristine Board Initialization
+- [ ] **18.1 Clean New Board Initialization:**
+  - Ensure creating a new board opens in a pristine default state: Select tool default, ruler hidden (`isVisible: false`) and centered at angle 0°, camera matrix reset to `{ x: 0, y: 0, scale: 1.0 }`, and history stacks cleared.
+- [ ] **18.2 Per-Board Canvas State Isolation:**
+  - Extend `BoardCanvasData` in `src/store/boardStore.ts` to persist per-board ruler coordinates (`{ x, y, angle, isVisible }`) and camera state.
+  - When switching between existing boards, restore each board's own isolated ruler and camera state without cross-board contamination.
+
+### Milestone 19: Clear Canvas Action & Undo History Integration
+- [ ] **19.1 Connect Clear Canvas in EraserPopover:**
+  - Fix `handleClearCanvas` in `src/components/toolbar/EraserPopover.tsx`: call `sceneStore.clearEntities()` and update `boardStore.flushSave()`.
+- [ ] **19.2 Undo/Redo Command History Integration:**
+  - Implement `ClearCanvasCommand` in `src/canvas/history.ts` so clearing the canvas can be instantly reversed with `Ctrl+Z` / Undo.
+  - Show a Fluent toast / feedback banner ("Canvas Cleared — Press Ctrl+Z to undo").
+
 ---
 
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `10.5 Electron Window Caption Buttons (Milestone 10 complete)`
-- **Current Active Sub-Task:** `All Milestones 1 through 10 Completed`
-- **Next Recommended Prompt:** `"Milestone 10 complete! All 6 bugs and features have been resolved. Run npm run electron:dev to launch and verify the live desktop app, or npm run electron:build to package the distribution."`
+- **Last Completed Sub-Task:** `10.5 Electron Window Caption Buttons (Milestones 0–10 complete)`
+- **Current Active Sub-Task:** `Milestones 11 through 19 Planned & Ready for Execution`
+- **Next Recommended Prompt:** `"Execute Sprint A (Milestones 14, 16, 18, 19: Paper Color/Grids, Shortcuts/Header Cleanup, Board Isolation, and Clear Canvas Fix), verify with npm run build, update Section 2 and Section 4 in Plan.md, and stop."`
