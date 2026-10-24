@@ -27,6 +27,8 @@ export interface RecognizedShape {
   height: number;
   x: number;
   y: number;
+  startPt?: Point2D;
+  endPt?: Point2D;
 }
 
 interface Point2D {
@@ -149,6 +151,8 @@ export class ShapeRecognitionEngine {
           height: lHeight,
           x: lMinX,
           y: lMinY,
+          startPt: snappedStart,
+          endPt: snappedEnd,
         };
       }
 
@@ -435,6 +439,117 @@ export class ShapeRecognitionEngine {
     }
 
     return topCount === 1 && bottomCount === 1 && leftCount === 1 && rightCount === 1;
+  }
+
+  /**
+   * Generates mathematically smoothed, beautified pen stroke points
+   * for an identified geometric shape (Module 40049: AddBeautifiedInk / LineModeStrokeCreated)
+   */
+  public generateBeautifiedPoints(shape: RecognizedShape): InkStrokePoint[] {
+    const points: InkStrokePoint[] = [];
+    const { shapeType, x, y, width, height, startPt, endPt } = shape;
+
+    if (shapeType === 'circle') {
+      const cx = x + width / 2;
+      const cy = y + height / 2;
+      const rx = width / 2;
+      const ry = height / 2;
+      const n = 48;
+      for (let i = 0; i <= n; i++) {
+        const theta = (i / n) * 2 * Math.PI - Math.PI / 2;
+        points.push({
+          x: parseFloat((cx + rx * Math.cos(theta)).toFixed(2)),
+          y: parseFloat((cy + ry * Math.sin(theta)).toFixed(2)),
+          pressure: 0.5,
+        });
+      }
+    } else if (shapeType === 'rectangle') {
+      const corners = [
+        { x, y },
+        { x: x + width, y },
+        { x: x + width, y: y + height },
+        { x, y: y + height },
+        { x, y },
+      ];
+      for (let s = 0; s < 4; s++) {
+        const c1 = corners[s];
+        const c2 = corners[s + 1];
+        // Duplicate corner point for sharp Catmull-Rom tangent clamping
+        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
+        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
+        for (let i = 1; i < 4; i++) {
+          const t = i / 4;
+          points.push({
+            x: parseFloat((c1.x + t * (c2.x - c1.x)).toFixed(2)),
+            y: parseFloat((c1.y + t * (c2.y - c1.y)).toFixed(2)),
+            pressure: 0.5,
+          });
+        }
+      }
+      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
+      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
+    } else if (shapeType === 'triangle') {
+      const corners = [
+        { x: x + width / 2, y },
+        { x: x + width, y: y + height },
+        { x, y: y + height },
+        { x: x + width / 2, y },
+      ];
+      for (let s = 0; s < 3; s++) {
+        const c1 = corners[s];
+        const c2 = corners[s + 1];
+        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
+        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
+        for (let i = 1; i < 4; i++) {
+          const t = i / 4;
+          points.push({
+            x: parseFloat((c1.x + t * (c2.x - c1.x)).toFixed(2)),
+            y: parseFloat((c1.y + t * (c2.y - c1.y)).toFixed(2)),
+            pressure: 0.5,
+          });
+        }
+      }
+      points.push({ x: corners[3].x, y: corners[3].y, pressure: 0.5 });
+      points.push({ x: corners[3].x, y: corners[3].y, pressure: 0.5 });
+    } else if (shapeType === 'diamond') {
+      const corners = [
+        { x: x + width / 2, y },
+        { x: x + width, y: y + height / 2 },
+        { x: x + width / 2, y: y + height },
+        { x, y: y + height / 2 },
+        { x: x + width / 2, y },
+      ];
+      for (let s = 0; s < 4; s++) {
+        const c1 = corners[s];
+        const c2 = corners[s + 1];
+        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
+        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
+        for (let i = 1; i < 4; i++) {
+          const t = i / 4;
+          points.push({
+            x: parseFloat((c1.x + t * (c2.x - c1.x)).toFixed(2)),
+            y: parseFloat((c1.y + t * (c2.y - c1.y)).toFixed(2)),
+            pressure: 0.5,
+          });
+        }
+      }
+      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
+      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
+    } else if (shapeType === 'line') {
+      const s = startPt || { x, y: y + height / 2 };
+      const e = endPt || { x: x + width, y: y + height / 2 };
+      const n = 12;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        points.push({
+          x: parseFloat((s.x + t * (e.x - s.x)).toFixed(2)),
+          y: parseFloat((s.y + t * (e.y - s.y)).toFixed(2)),
+          pressure: 0.5,
+        });
+      }
+    }
+
+    return points;
   }
 }
 

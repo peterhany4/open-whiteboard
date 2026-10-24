@@ -215,10 +215,12 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
     - Contour pre-filtering (point count, path length, and endpoint closure heuristics).
     - Ramer-Douglas-Peucker (RDP) adaptive polygon simplification.
     - Geometric classifiers for Circle / Ellipse (circularity $\ge 0.70$, low radial variance), Rectangle / Square (4 corners, $90^\circ \pm 25^\circ$ angles, aspect ratio square snap), Triangle (3 corners, angle sum $\approx 180^\circ$), Diamond (4 corners at cardinal midpoints), and Straight Line (straightness $\ge 0.92$, $7^\circ$ magnetic horizontal/vertical snapping).
-- [x] **17.3 Settings Toggle & Automatic Vector Shape Replacement:**
+- [x] **17.3 Settings Toggle & Beautified Ink Stroke Replacement:**
   - Added `isEnhanceInkedShapesEnabled` in `src/store/canvasStore.ts` (persisted in `localStorage` under `'wb-enhance-inked-shapes'`).
   - Added Fluent "Enhance inked shapes" toggle row in `TopBar.tsx` Settings popover.
-  - In `src/tools/PenTool.ts` (`onPointerUp`), when enabled and ruler is inactive, recognized geometric strokes (confidence $\ge 0.85$) are automatically morphed into clean vector `ShapeEntity` instances matching pen color and thickness with full Undo/Redo (`Ctrl+Z`) support.
+  - In `src/tools/PenTool.ts` (`onPointerUp`), when enabled and ruler is inactive, recognized geometric strokes (confidence $\ge 0.85$) are automatically converted into mathematically straightened `InkStrokeEntity` strokes (Module 40049: `AddBeautifiedInk` / `LineModeStrokeCreated`) matching pen color and thickness. This ensures drawn shapes render on the SVG ink layer and are erased by both `StrokeEraser` and `PointEraser` just like normal pen handwriting.
+  - In `src/tools/EraserTool.ts`, added boundary and area hit-testing for `ShapeEntity` widgets (e.g. shapes placed via the Create `+` menu), ensuring all shapes can be cleanly erased with the eraser.
+  - In `src/components/canvas/ShapeWidget.tsx`, added double-click inline text editing with tool-mode pointer-event isolation (`pointerEvents: 'none'` during inking so pen strokes across shapes draw without interference).
 
 ### Milestone 18: Individual Board Session Isolation & Pristine Board Initialization
 - [x] **18.1 Clean New Board Initialization:**
@@ -243,6 +245,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `17.3 Settings Toggle & Automatic Vector Shape Replacement (Milestone 17 complete)`
-- **Current Active Sub-Task:** `All Milestones (0 through 19) Completed & Verified`
+- **Last Completed Sub-Task:** `Fix: Beautified Inked Shapes & Eraser Integration (Drawn shapes are InkStrokeEntity erasable by pen eraser; ShapeEntity also erasable)`
+- **Current Active Sub-Task:** `All Milestones & Inked Shapes/Eraser Fixes Completed`
 - **Next Recommended Prompt:** `"Review full project status and test desktop application build."`

@@ -17,7 +17,7 @@
 
 import type { CameraMatrix, Point } from '../canvas/camera';
 import { screenToWorld } from '../canvas/camera';
-import type { InkStrokeEntity, InkStrokePoint } from '../canvas/sceneGraph';
+import type { InkStrokeEntity, InkStrokePoint, ShapeEntity } from '../canvas/sceneGraph';
 import { computeStrokeBounds } from '../canvas/sceneGraph';
 import { sceneStore } from '../store/sceneStore';
 import { inkingStore } from '../store/inkingStore';
@@ -182,6 +182,105 @@ export class EraserToolEngine {
   }
 
   /**
+   * Hit-tests a ShapeEntity against the eraser circle
+   */
+  private isShapeHit(shape: ShapeEntity, center: Point, eraserRadius: number): boolean {
+    const effectiveRadius = eraserRadius + (shape.strokeWidth || 2) / 2;
+    const x = shape.x;
+    const y = shape.y;
+    const w = shape.width;
+    const h = shape.height;
+
+    // 1. Broadphase AABB rejection
+    if (
+      center.x < x - effectiveRadius ||
+      center.x > x + w + effectiveRadius ||
+      center.y < y - effectiveRadius ||
+      center.y > y + h + effectiveRadius
+    ) {
+      return false;
+    }
+
+    // 2. Specific shape geometry check
+    if (shape.shapeType === 'circle') {
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const rx = w / 2;
+      const ry = h / 2;
+      const avgR = (rx + ry) / 2;
+      const distToCenter = Math.hypot(center.x - cx, center.y - cy);
+      const isFilled = Boolean(shape.fillColor && shape.fillColor !== 'transparent');
+      if (isFilled) {
+        return distToCenter <= avgR + effectiveRadius;
+      } else {
+        return Math.abs(distToCenter - avgR) <= effectiveRadius;
+      }
+    }
+
+    let segments: [Point, Point][] = [];
+    if (shape.shapeType === 'rectangle') {
+      const p1 = { x, y };
+      const p2 = { x: x + w, y };
+      const p3 = { x: x + w, y: y + h };
+      const p4 = { x, y: y + h };
+      segments = [
+        [p1, p2],
+        [p2, p3],
+        [p3, p4],
+        [p4, p1],
+      ];
+    } else if (shape.shapeType === 'parallelogram') {
+      const skew = w * 0.2;
+      const p1 = { x: x + skew, y };
+      const p2 = { x: x + w, y };
+      const p3 = { x: x + w - skew, y: y + h };
+      const p4 = { x, y: y + h };
+      segments = [
+        [p1, p2],
+        [p2, p3],
+        [p3, p4],
+        [p4, p1],
+      ];
+    } else if (shape.shapeType === 'triangle') {
+      const p1 = { x: x + w / 2, y };
+      const p2 = { x: x + w, y: y + h };
+      const p3 = { x, y: y + h };
+      segments = [
+        [p1, p2],
+        [p2, p3],
+        [p3, p1],
+      ];
+    } else if (shape.shapeType === 'diamond') {
+      const p1 = { x: x + w / 2, y };
+      const p2 = { x: x + w, y: y + h / 2 };
+      const p3 = { x: x + w / 2, y: y + h };
+      const p4 = { x, y: y + h / 2 };
+      segments = [
+        [p1, p2],
+        [p2, p3],
+        [p3, p4],
+        [p4, p1],
+      ];
+    } else if (shape.shapeType === 'line' || shape.shapeType === 'arrow') {
+      segments = [[{ x, y }, { x: x + w, y: y + h }]];
+    }
+
+    for (const [pA, pB] of segments) {
+      if (distToSegment(center, pA, pB) <= effectiveRadius) {
+        return true;
+      }
+    }
+
+    if (shape.fillColor && shape.fillColor !== 'transparent') {
+      if (center.x >= x && center.x <= x + w && center.y >= y && center.y <= y + h) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Performs hit-testing and execution for StrokeEraser or PointEraser
    */
   private performEraseAt(center: Point, eraserRadius: number) {
@@ -189,62 +288,61 @@ export class EraserToolEngine {
     const mode = inkingState.eraser.mode;
     const allEntities = sceneStore.getAllEntities();
 
-    // Collect all inking and highlighter strokes
-    const strokeEntities: InkStrokeEntity[] = [];
     for (const ent of allEntities) {
       if (ent.type === 'stroke') {
-        strokeEntities.push(ent as InkStrokeEntity);
-      }
-    }
+        const stroke = ent as InkStrokeEntity;
+        // 1. Broadphase AABB rejection
+        const effectiveRadius = eraserRadius + stroke.width / 2;
+        const eraserAABB = {
+          minX: center.x - effectiveRadius,
+          maxX: center.x + effectiveRadius,
+          minY: center.y - effectiveRadius,
+          maxY: center.y + effectiveRadius,
+        };
 
-    if (strokeEntities.length === 0) return;
-
-    for (const stroke of strokeEntities) {
-      // 1. Broadphase AABB rejection
-      const effectiveRadius = eraserRadius + stroke.width / 2;
-      const eraserAABB = {
-        minX: center.x - effectiveRadius,
-        maxX: center.x + effectiveRadius,
-        minY: center.y - effectiveRadius,
-        maxY: center.y + effectiveRadius,
-      };
-
-      if (
-        stroke.bounds.maxX < eraserAABB.minX ||
-        stroke.bounds.minX > eraserAABB.maxX ||
-        stroke.bounds.maxY < eraserAABB.minY ||
-        stroke.bounds.minY > eraserAABB.maxY
-      ) {
-        continue;
-      }
-
-      // 2. Narrowphase segment hit-test
-      let hasHit = false;
-      const points = stroke.points;
-
-      for (let i = 0; i < points.length - 1; i++) {
-        const d = distToSegment(center, points[i], points[i + 1]);
-        if (d <= effectiveRadius) {
-          hasHit = true;
-          break;
+        if (
+          stroke.bounds.maxX < eraserAABB.minX ||
+          stroke.bounds.minX > eraserAABB.maxX ||
+          stroke.bounds.maxY < eraserAABB.minY ||
+          stroke.bounds.minY > eraserAABB.maxY
+        ) {
+          continue;
         }
-      }
 
-      if (!hasHit && points.length === 1) {
-        if (Math.hypot(center.x - points[0].x, center.y - points[0].y) <= effectiveRadius) {
-          hasHit = true;
+        // 2. Narrowphase segment hit-test
+        let hasHit = false;
+        const points = stroke.points;
+
+        for (let i = 0; i < points.length - 1; i++) {
+          const d = distToSegment(center, points[i], points[i + 1]);
+          if (d <= effectiveRadius) {
+            hasHit = true;
+            break;
+          }
         }
-      }
 
-      if (!hasHit) continue;
+        if (!hasHit && points.length === 1) {
+          if (Math.hypot(center.x - points[0].x, center.y - points[0].y) <= effectiveRadius) {
+            hasHit = true;
+          }
+        }
 
-      // 3. Action based on active Eraser Mode
-      if (mode === 'StrokeEraser') {
-        // Module 84781932 (class rt): Delete entire stroke entity
-        sceneStore.removeEntity(stroke.id, true);
-      } else {
-        // Module 84781932 (class wt): Partial/Point Eraser (split stroke path)
-        this.splitAndReplaceStroke(stroke, center, effectiveRadius);
+        if (!hasHit) continue;
+
+        // 3. Action based on active Eraser Mode
+        if (mode === 'StrokeEraser') {
+          // Module 84781932 (class rt): Delete entire stroke entity
+          sceneStore.removeEntity(stroke.id, true);
+        } else {
+          // Module 84781932 (class wt): Partial/Point Eraser (split stroke path)
+          this.splitAndReplaceStroke(stroke, center, effectiveRadius);
+        }
+      } else if (ent.type === 'shape') {
+        // Erase shape widgets inserted via Create (+) menu
+        const shape = ent as ShapeEntity;
+        if (this.isShapeHit(shape, center, eraserRadius)) {
+          sceneStore.removeEntity(shape.id, true);
+        }
       }
     }
   }

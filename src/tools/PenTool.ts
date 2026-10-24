@@ -17,7 +17,7 @@
 
 import type { CameraMatrix, Point } from '../canvas/camera';
 import { screenToWorld } from '../canvas/camera';
-import type { InkStrokeEntity, InkStrokePoint, ShapeEntity, AABB } from '../canvas/sceneGraph';
+import type { InkStrokeEntity, InkStrokePoint, AABB } from '../canvas/sceneGraph';
 import { computeStrokeBounds } from '../canvas/sceneGraph';
 import { sceneStore } from '../store/sceneStore';
 import { inkingStore } from '../store/inkingStore';
@@ -224,7 +224,7 @@ export class PenToolEngine {
    */
   public onPointerUp(
     _e?: React.PointerEvent<HTMLDivElement> | PointerEvent
-  ): InkStrokeEntity | ShapeEntity | null {
+  ): InkStrokeEntity | null {
     if (!this.isDrawing) return null;
     this.isDrawing = false;
 
@@ -253,6 +253,8 @@ export class PenToolEngine {
     const finalWidth = Math.max(1, Math.min(baseThickness * 1.8, modulatedWidth));
 
     // Enhance Inked Shapes recognition (Milestone 17)
+    // Converts recognized hand-drawn gestures into mathematically straightened beautified ink strokes
+    // (Module 40049: AddBeautifiedInk / LineModeStrokeCreated)
     // Only apply when ruler is inactive and Enhance Inked Shapes is enabled
     const isEnhanceEnabled = canvasStore.getState().isEnhanceInkedShapesEnabled;
     const isRulerActive = rulerEngine.getState().isActive;
@@ -260,26 +262,28 @@ export class PenToolEngine {
     if (isEnhanceEnabled && !isRulerActive && finalPoints.length >= 8) {
       const recognized = shapeRecognitionEngine.recognize(finalPoints);
       if (recognized.recognized && recognized.shapeType && recognized.confidence >= 0.85) {
-        const timestamp = Date.now();
-        const shapeEntity: ShapeEntity = {
-          id: `shape_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
-          type: 'shape',
-          x: Math.round(recognized.x),
-          y: Math.round(recognized.y),
-          width: Math.round(recognized.width),
-          height: Math.round(recognized.height),
-          shapeType: recognized.shapeType,
-          strokeColor: color,
-          fillColor: 'transparent',
-          strokeWidth: Math.max(2, Math.round(finalWidth)),
-          zIndex: 200,
-          bounds: recognized.bounds,
-          createdAt: timestamp,
-          updatedAt: timestamp,
+        const beautifiedPoints = shapeRecognitionEngine.generateBeautifiedPoints(recognized);
+        const hasArrows = arrowMode !== 'NoArrow';
+        const bounds: AABB = computeStrokeBounds(beautifiedPoints, finalWidth, hasArrows);
+
+        const strokeEntity: InkStrokeEntity = {
+          id: this.strokeId,
+          type: 'stroke',
+          tool: 'pen',
+          color,
+          width: finalWidth,
+          points: beautifiedPoints,
+          zIndex: 200, // Drawing layer
+          arrowStart: arrowMode === 'InkDoubleArrow',
+          arrowEnd: arrowMode === 'InkSingleArrow' || arrowMode === 'InkDoubleArrow',
+          effect,
+          bounds,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         };
 
         // Commit to persistent spatial sceneStore with Undo/Redo capability
-        sceneStore.addEntity(shapeEntity, true);
+        sceneStore.addEntity(strokeEntity, true);
 
         // Clear live preview & buffers
         this.emitLiveStroke(null);
@@ -287,7 +291,7 @@ export class PenToolEngine {
         this.filteredPoints = [];
         this.catmullBuffer = [];
 
-        return shapeEntity;
+        return strokeEntity;
       }
     }
 
