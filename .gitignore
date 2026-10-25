@@ -17,6 +17,7 @@ release
 # Heavy raw targets & cache (REA artifacts are saved in rea-artifacts/)
 targets/
 rea-artifacts/
+scratch/pdfcraft-repo/
 
 # Editor & OS
 .vscode/*

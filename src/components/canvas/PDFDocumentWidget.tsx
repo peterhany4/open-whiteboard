@@ -60,12 +60,23 @@ export function dataUrlToUint8Array(dataUrl: string): Uint8Array {
   return bytes;
 }
 
-interface PDFTextSelectionToolbarState {
-  visible: boolean;
+import {
+  extractPageGlyphs,
+  findNearestGlyph,
+  computeMergedLineRects,
+  getWordRangeAt,
+  getLineRangeAt,
+  extractCleanText,
+  type PDFGlyphItem,
+  type MergedLineRect,
+} from './pdfTextLayout';
+
+export interface ActivePDFSelection {
+  pageNumber: number;
+  rects: MergedLineRect[];
+  text: string;
   screenX: number;
   screenY: number;
-  rects: DOMRect[];
-  text: string;
 }
 
 interface PDFPageItemProps {
@@ -78,13 +89,38 @@ interface PDFPageItemProps {
   height: number;
   isSelectTool: boolean;
   highlights?: PDFHighlightAnnotation[];
+  activeSelection: ActivePDFSelection | null;
+  onSelectionChange: (sel: ActivePDFSelection | null) => void;
 }
 
 const PDFPageItem: React.FC<PDFPageItemProps> = memo(
-  ({ pdfDoc, docId, pageOffsetY, pageNumber, totalPages, width, height, isSelectTool, highlights }) => {
+  ({
+    pdfDoc,
+    docId,
+    pageOffsetY,
+    pageNumber,
+    totalPages,
+    width,
+    height,
+    isSelectTool,
+    highlights,
+    activeSelection,
+    onSelectionChange,
+  }) => {
+    const cardRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
     const [isRendered, setIsRendered] = useState(false);
+
+    // PdfCraft glyph storage and selection state
+    const glyphsRef = useRef<PDFGlyphItem[]>([]);
+    const isDraggingRef = useRef(false);
+    const anchorIdxRef = useRef<number>(0);
+    const headIdxRef = useRef<number>(0);
+    const dragModeRef = useRef<'char' | 'word' | 'line' | 'page'>('char');
+    const lastClickTimeRef = useRef<number>(0);
+    const lastClickPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const clickCountRef = useRef<number>(0);
 
     useEffect(() => {
       let isCancelled = false;
@@ -126,64 +162,69 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           if (isCancelled) return;
           setIsRendered(true);
 
-          // Render Selectable & Copyable TextLayer (Milestone 11.2)
-          if (textLayerRef.current) {
-            const textContainer = textLayerRef.current;
-            textContainer.innerHTML = '';
-            textContainer.style.width = `${viewport.width}px`;
-            textContainer.style.height = `${viewport.height}px`;
-            textContainer.style.setProperty('--total-scale-factor', `${scale}`);
-            textContainer.style.setProperty('--min-font-size', '1');
-            textContainer.style.setProperty('--text-scale-factor', `${scale}`);
+          // Extract text content using PdfCraft layout engine
+          try {
+            const textContent = await page.getTextContent();
+            if (isCancelled) return;
 
-            try {
-              const textContent = await page.getTextContent();
-              if (isCancelled) return;
+            const glyphs = extractPageGlyphs(textContent, viewport);
+            glyphsRef.current = glyphs;
 
-              const textLayer = new pdfjsLib.TextLayer({
-                textContentSource: textContent,
-                container: textContainer,
-                viewport,
-              });
-              await textLayer.render();
-
-              // Extract and register line bounding boxes for Highlighter snap-to-text
-              const spans = Array.from(textContainer.querySelectorAll('span'));
-              if (spans.length > 0) {
-                const lineGroups: { top: number; spans: HTMLSpanElement[] }[] = [];
-                for (const span of spans) {
-                  const top = span.offsetTop;
-                  const group = lineGroups.find((g) => Math.abs(g.top - top) <= 4);
-                  if (group) {
-                    group.spans.push(span);
-                  } else {
-                    lineGroups.push({ top, spans: [span] });
-                  }
+            // Register line bounding boxes in pdfTextRegistry for snap-to-text highlighting
+            if (glyphs.length > 0) {
+              const lineMap = new Map<number, { minX: number; maxX: number; minY: number; maxY: number }>();
+              for (const g of glyphs) {
+                const existing = lineMap.get(g.lineIndex);
+                if (existing) {
+                  existing.minX = Math.min(existing.minX, g.relX);
+                  existing.maxX = Math.max(existing.maxX, g.relX + g.width);
+                  existing.minY = Math.min(existing.minY, g.relY);
+                  existing.maxY = Math.max(existing.maxY, g.relY + g.height);
+                } else {
+                  lineMap.set(g.lineIndex, {
+                    minX: g.relX,
+                    maxX: g.relX + g.width,
+                    minY: g.relY,
+                    maxY: g.relY + g.height,
+                  });
                 }
-
-                const lines: PDFTextLine[] = lineGroups.map((group, idx) => {
-                  const minX = Math.min(...group.spans.map((s) => s.offsetLeft));
-                  const maxX = Math.max(...group.spans.map((s) => s.offsetLeft + s.offsetWidth));
-                  const avgHeight =
-                    group.spans.reduce((acc, s) => acc + s.offsetHeight, 0) / group.spans.length;
-                  const centerY = pageOffsetY + group.top + avgHeight / 2;
-                  return {
-                    id: `${docId}_p${pageNumber}_l${idx}`,
-                    docId,
-                    pageNumber,
-                    relMinX: minX,
-                    relMaxX: maxX,
-                    relCenterY: centerY,
-                    relHeight: Math.max(12, avgHeight),
-                  };
-                });
-
-                pdfTextRegistry.registerDocPageLines(docId, pageNumber, lines);
               }
-              pdfTextRegistry.registerDocPage(docId, pageNumber, pageOffsetY, width, height);
-            } catch (textErr) {
-              console.warn(`[PDFDocumentWidget] TextLayer error page ${pageNumber}:`, textErr);
+
+              const lines: PDFTextLine[] = Array.from(lineMap.entries()).map(([lineIdx, bounds]) => ({
+                id: `${docId}_p${pageNumber}_l${lineIdx}`,
+                docId,
+                pageNumber,
+                relMinX: bounds.minX,
+                relMaxX: bounds.maxX,
+                relCenterY: pageOffsetY + (bounds.minY + bounds.maxY) / 2,
+                relHeight: Math.max(12, bounds.maxY - bounds.minY),
+              }));
+
+              pdfTextRegistry.registerDocPageLines(docId, pageNumber, lines);
             }
+            pdfTextRegistry.registerDocPage(docId, pageNumber, pageOffsetY, width, height);
+
+            // Maintain non-interactive textLayer container for DOM inspection/accessibility
+            if (textLayerRef.current) {
+              const textContainer = textLayerRef.current;
+              textContainer.innerHTML = '';
+              textContainer.style.width = `${viewport.width}px`;
+              textContainer.style.height = `${viewport.height}px`;
+              textContainer.style.setProperty('--total-scale-factor', `${scale}`);
+              textContainer.style.setProperty('--min-font-size', '1');
+              textContainer.style.setProperty('--text-scale-factor', `${scale}`);
+
+              try {
+                const textLayer = new pdfjsLib.TextLayer({
+                  textContentSource: textContent,
+                  container: textContainer,
+                  viewport,
+                });
+                await textLayer.render();
+              } catch {}
+            }
+          } catch (textErr) {
+            console.warn(`[PDFDocumentWidget] Text extraction error page ${pageNumber}:`, textErr);
           }
         } catch (err: any) {
           if (err?.name !== 'RenderingCancelledException') {
@@ -204,10 +245,159 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
       };
     }, [pdfDoc, pageNumber, width, docId, pageOffsetY]);
 
+    const updateSelectionState = (anchor: number, head: number, card: HTMLElement) => {
+      const glyphs = glyphsRef.current;
+      if (!glyphs || glyphs.length === 0) return;
+
+      const sIdx = Math.min(anchor, head);
+      const eIdx = Math.max(anchor, head);
+      const rects = computeMergedLineRects(glyphs, sIdx, eIdx);
+      const text = extractCleanText(glyphs, sIdx, eIdx);
+
+      if (rects.length === 0 || !text.trim()) {
+        onSelectionChange(null);
+        return;
+      }
+
+      const cRect = card.getBoundingClientRect();
+      const scaleX = cRect.width / width;
+      const scaleY = cRect.height / height;
+
+      const lastRect = rects[rects.length - 1];
+      const screenLeft = cRect.left + (lastRect.x + lastRect.width / 2) * scaleX;
+      const lastRectTop = cRect.top + lastRect.y * scaleY;
+      const lastRectBottom = cRect.top + (lastRect.y + lastRect.height) * scaleY;
+
+      const screenX = Math.round(screenLeft);
+      const screenY = Math.round(lastRectTop > 60 ? lastRectTop - 46 : lastRectBottom + 10);
+
+      onSelectionChange({
+        pageNumber,
+        rects,
+        text,
+        screenX,
+        screenY,
+      });
+    };
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+      if (e.button !== 0 || !isSelectTool) return;
+      const glyphs = glyphsRef.current;
+      if (!glyphs || glyphs.length === 0) return;
+
+      const card = cardRef.current;
+      if (!card) return;
+
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        card.setPointerCapture(e.pointerId);
+      } catch {}
+
+      const cRect = card.getBoundingClientRect();
+      const relX = (e.clientX - cRect.left) * (width / cRect.width);
+      const relY = (e.clientY - cRect.top) * (height / cRect.height);
+
+      const now = Date.now();
+      let clicks = 1;
+      if (
+        now - lastClickTimeRef.current < 350 &&
+        Math.hypot(relX - lastClickPosRef.current.x, relY - lastClickPosRef.current.y) < 20
+      ) {
+        clicks = (clickCountRef.current % 4) + 1;
+      }
+      clickCountRef.current = clicks;
+      lastClickTimeRef.current = now;
+      lastClickPosRef.current = { x: relX, y: relY };
+
+      const nearestIdx = findNearestGlyph(relX, relY, glyphs);
+      if (nearestIdx === null) {
+        isDraggingRef.current = false;
+        onSelectionChange(null);
+        return;
+      }
+
+      isDraggingRef.current = true;
+
+      if (clicks === 1) {
+        anchorIdxRef.current = nearestIdx;
+        headIdxRef.current = nearestIdx;
+        dragModeRef.current = 'char';
+      } else if (clicks === 2) {
+        const [wStart, wEnd] = getWordRangeAt(glyphs, nearestIdx);
+        anchorIdxRef.current = wStart;
+        headIdxRef.current = wEnd;
+        dragModeRef.current = 'word';
+        updateSelectionState(wStart, wEnd, card);
+      } else if (clicks === 3) {
+        const [lStart, lEnd] = getLineRangeAt(glyphs, nearestIdx);
+        anchorIdxRef.current = lStart;
+        headIdxRef.current = lEnd;
+        dragModeRef.current = 'line';
+        updateSelectionState(lStart, lEnd, card);
+      } else {
+        anchorIdxRef.current = 0;
+        headIdxRef.current = glyphs.length - 1;
+        dragModeRef.current = 'page';
+        updateSelectionState(0, glyphs.length - 1, card);
+      }
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+      if (!isDraggingRef.current || !isSelectTool) return;
+      const glyphs = glyphsRef.current;
+      if (!glyphs || glyphs.length === 0) return;
+
+      const card = cardRef.current;
+      if (!card) return;
+
+      e.stopPropagation();
+      e.preventDefault();
+
+      const cRect = card.getBoundingClientRect();
+      const relX = (e.clientX - cRect.left) * (width / cRect.width);
+      const relY = (e.clientY - cRect.top) * (height / cRect.height);
+
+      const curIdx = findNearestGlyph(relX, relY, glyphs);
+      if (curIdx === null) return;
+
+      const mode = dragModeRef.current;
+      const anchor = anchorIdxRef.current;
+
+      if (mode === 'char') {
+        headIdxRef.current = curIdx;
+      } else if (mode === 'word') {
+        const [wStart, wEnd] = getWordRangeAt(glyphs, curIdx);
+        headIdxRef.current = curIdx >= anchor ? wEnd : wStart;
+      } else if (mode === 'line') {
+        const [lStart, lEnd] = getLineRangeAt(glyphs, curIdx);
+        headIdxRef.current = curIdx >= anchor ? lEnd : lStart;
+      }
+
+      updateSelectionState(anchorIdxRef.current, headIdxRef.current, card);
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      try {
+        cardRef.current?.releasePointerCapture(e.pointerId);
+      } catch {}
+
+      if (clickCountRef.current === 1 && anchorIdxRef.current === headIdxRef.current) {
+        onSelectionChange(null);
+      }
+    };
+
     return (
       <div
+        ref={cardRef}
         className="wb-pdf-page-card"
         data-page-number={pageNumber}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         style={{
           position: 'relative',
           width: `${width}px`,
@@ -216,9 +406,9 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
           borderRadius: '4px',
           boxShadow: '0 3px 12px rgba(0, 0, 0, 0.12)',
           overflow: 'hidden',
-          // Inking tools draw directly over the document; Select tool enables text selection
           pointerEvents: isSelectTool ? 'auto' : 'none',
-          userSelect: isSelectTool ? 'text' : 'none',
+          userSelect: 'none',
+          cursor: isSelectTool ? 'text' : 'default',
         }}
       >
         {!isRendered && (
@@ -295,7 +485,7 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
             ))}
         </svg>
 
-        {/* Transparent PDF.js Text Layer Overlay */}
+        {/* Transparent Non-Interactive PDF.js Text Layer Overlay */}
         <div
           ref={textLayerRef}
           className="textLayer"
@@ -303,11 +493,42 @@ const PDFPageItem: React.FC<PDFPageItemProps> = memo(
             position: 'absolute',
             inset: 0,
             overflow: 'hidden',
-            pointerEvents: isSelectTool ? 'auto' : 'none',
-            userSelect: isSelectTool ? 'text' : 'none',
+            pointerEvents: 'none',
+            userSelect: 'none',
             zIndex: 2,
           }}
         />
+
+        {/* In-Page Vector Selection Overlay (PdfCraft / Google Docs Architecture) */}
+        {activeSelection &&
+          activeSelection.pageNumber === pageNumber &&
+          activeSelection.rects.length > 0 && (
+            <svg
+              className="wb-pdf-page-selection-overlay"
+              viewBox={`0 0 ${width} ${height}`}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: `${width}px`,
+                height: `${height}px`,
+                pointerEvents: 'none',
+                zIndex: 3,
+              }}
+            >
+              {activeSelection.rects.map((r, rIdx) => (
+                <rect
+                  key={`sel_rect_${rIdx}`}
+                  x={r.x}
+                  y={r.y}
+                  width={r.width}
+                  height={r.height}
+                  fill="rgba(0, 120, 215, 0.28)"
+                  rx={2}
+                  ry={2}
+                />
+              ))}
+            </svg>
+          )}
 
         {/* Subtle Page Badge */}
         <div
@@ -353,7 +574,7 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
   const [isLoading, setIsLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [isHeaderDragging, setIsHeaderDragging] = useState(false);
-  const [textToolbar, setTextToolbar] = useState<PDFTextSelectionToolbarState | null>(null);
+  const [activeSelection, setActiveSelection] = useState<ActivePDFSelection | null>(null);
 
   const widgetContainerRef = useRef<HTMLDivElement>(null);
   const isLocked = Boolean(docEntity.isLocked);
@@ -365,181 +586,138 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
     };
   }, [docEntity.id]);
 
-  // Monitor text selection across document text layers in Select mode
+  // Synchronize Quick Bar screen position on camera transform / window resize
   useEffect(() => {
-    if (!isSelectTool) {
-      setTextToolbar(null);
-      return;
-    }
+    if (!activeSelection) return;
 
-    const handleSelectionChange = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !sel.rangeCount) {
-        setTextToolbar(null);
-        return;
-      }
-
-      const text = sel.toString().trim();
-      if (!text) {
-        setTextToolbar(null);
-        return;
-      }
-
+    const updateQuickBarScreen = () => {
       const container = widgetContainerRef.current;
       if (!container) return;
+      const card = container.querySelector<HTMLElement>(
+        `.wb-pdf-page-card[data-page-number="${activeSelection.pageNumber}"]`
+      );
+      if (!card) return;
+      const cRect = card.getBoundingClientRect();
+      const lastRect = activeSelection.rects[activeSelection.rects.length - 1];
+      if (!lastRect) return;
 
-      const anchorNode = sel.anchorNode;
-      const focusNode = sel.focusNode;
-      if (!anchorNode || !focusNode) return;
-      if (!container.contains(anchorNode) || !container.contains(focusNode)) {
-        return;
-      }
+      const pageWidth = docEntity.width;
+      const pageHeight = pageHeights[activeSelection.pageNumber] || Math.round(pageWidth * 1.414);
+      const scaleX = cRect.width / pageWidth;
+      const scaleY = cRect.height / pageHeight;
 
-      const anchorEl = anchorNode instanceof HTMLElement ? anchorNode : anchorNode.parentElement;
-      if (!anchorEl?.closest('.textLayer')) {
-        return;
-      }
+      const screenLeft = cRect.left + (lastRect.x + lastRect.width / 2) * scaleX;
+      const lastRectTop = cRect.top + lastRect.y * scaleY;
+      const lastRectBottom = cRect.top + (lastRect.y + lastRect.height) * scaleY;
 
-      const range = sel.getRangeAt(0);
-      const bRect = range.getBoundingClientRect();
-      if (bRect.width === 0 || bRect.height === 0) return;
+      const screenX = Math.round(screenLeft);
+      const screenY = Math.round(lastRectTop > 60 ? lastRectTop - 46 : lastRectBottom + 10);
 
-      const rawRects = Array.from(range.getClientRects());
-      const lineRects = rawRects.filter((r) => r.width > 2 && r.height > 2);
-      if (lineRects.length === 0) return;
-
-      const screenX = bRect.left + bRect.width / 2;
-      const screenY = bRect.top > 60 ? bRect.top - 46 : bRect.bottom + 10;
-
-      setTextToolbar({
-        visible: true,
-        screenX,
-        screenY,
-        rects: lineRects,
-        text,
-      });
+      setActiveSelection((prev) => (prev ? { ...prev, screenX, screenY } : null));
     };
+
+    window.addEventListener('resize', updateQuickBarScreen);
+    const unsubCanvas = canvasStore.subscribe(updateQuickBarScreen);
+
+    return () => {
+      window.removeEventListener('resize', updateQuickBarScreen);
+      unsubCanvas();
+    };
+  }, [activeSelection?.pageNumber, docEntity.width, pageHeights]);
+
+  // Global Keyboard shortcuts: Escape (dismiss selection) and Ctrl+C (copy)
+  useEffect(() => {
+    if (!activeSelection) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setTextToolbar(null);
-        window.getSelection()?.removeAllRanges();
+        setActiveSelection(null);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        if (activeSelection?.text) {
+          navigator.clipboard.writeText(activeSelection.text);
+        }
       }
     };
 
-    document.addEventListener('selectionchange', handleSelectionChange);
-    window.addEventListener('resize', handleSelectionChange);
     window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSelection]);
 
-    // Keep selection overlay positioned when canvas camera moves/zooms
-    const unsubCanvas = canvasStore.subscribe(() => {
-      if (window.getSelection()?.rangeCount) {
-        handleSelectionChange();
-      }
-    });
-
-    return () => {
-      document.removeEventListener('selectionchange', handleSelectionChange);
-      window.removeEventListener('resize', handleSelectionChange);
-      window.removeEventListener('keydown', handleKeyDown);
-      unsubCanvas();
-    };
+  // Clear selection if switching away from Select tool
+  useEffect(() => {
+    if (!isSelectTool) {
+      setActiveSelection(null);
+    }
   }, [isSelectTool]);
 
   const handleApplyHighlight = (color: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!textToolbar || textToolbar.rects.length === 0) return;
+    if (!activeSelection || activeSelection.rects.length === 0) return;
 
-    const container = widgetContainerRef.current;
-    if (!container) return;
+    const pageNum = activeSelection.pageNumber;
+    const pageWidth = docEntity.width;
+    const pageHeight = pageHeights[pageNum] || Math.round(pageWidth * 1.414);
 
-    const pageCards = Array.from(container.querySelectorAll<HTMLElement>('.wb-pdf-page-card'));
-    if (pageCards.length === 0) return;
-
-    // Group textToolbar.rects by matching page card
-    const rectsByPage = new Map<number, { pageNum: number; rects: PDFHighlightRect[] }>();
-
-    for (const rect of textToolbar.rects) {
-      const midY = rect.top + rect.height / 2;
-      const matchingCard =
-        pageCards.find((card) => {
-          const cRect = card.getBoundingClientRect();
-          return midY >= cRect.top && midY <= cRect.bottom;
-        }) || pageCards[0];
-
-      const pageNum = parseInt(matchingCard.getAttribute('data-page-number') || '1', 10);
-      const cRect = matchingCard.getBoundingClientRect();
-
-      const relRect: PDFHighlightRect = {
-        relX: Math.max(0, Math.min(1, (rect.left - cRect.left) / cRect.width)),
-        relY: Math.max(0, Math.min(1, (rect.top - cRect.top) / cRect.height)),
-        width: Math.max(0.005, Math.min(1, rect.width / cRect.width)),
-        height: Math.max(0.005, Math.min(1, rect.height / cRect.height)),
-      };
-
-      let group = rectsByPage.get(pageNum);
-      if (!group) {
-        group = { pageNum, rects: [] };
-        rectsByPage.set(pageNum, group);
-      }
-      group.rects.push(relRect);
-    }
+    const relRects: PDFHighlightRect[] = activeSelection.rects.map((r) => ({
+      relX: Math.max(0, Math.min(1, r.x / pageWidth)),
+      relY: Math.max(0, Math.min(1, r.y / pageHeight)),
+      width: Math.max(0.005, Math.min(1, r.width / pageWidth)),
+      height: Math.max(0.005, Math.min(1, r.height / pageHeight)),
+    }));
 
     const currentDoc = (sceneStore.getEntity(docEntity.id) as PDFDocumentEntity | undefined) || docEntity;
     const existingHighlights = currentDoc.highlights || [];
     const isColorEqual = (c1: string, c2: string) => c1.trim().toLowerCase() === c2.trim().toLowerCase();
 
-    for (const { pageNum, rects } of rectsByPage.values()) {
-      const pageHighlights = existingHighlights.filter((h) => h.pageNumber === pageNum);
-      const overlapping = pageHighlights.filter((h) => doesHighlightOverlapRects(h, rects));
-      const sameColorOverlapping = overlapping.filter((h) => isColorEqual(h.color, color));
+    const pageHighlights = existingHighlights.filter((h) => h.pageNumber === pageNum);
+    const overlapping = pageHighlights.filter((h) => doesHighlightOverlapRects(h, relRects));
+    const sameColorOverlapping = overlapping.filter((h) => isColorEqual(h.color, color));
 
-      if (sameColorOverlapping.length > 0) {
-        // TOGGLE OFF: Undo / remove highlight
-        for (const h of sameColorOverlapping) {
-          removePDFHighlight(docEntity.id, h.id);
-        }
-      } else if (overlapping.length > 0) {
-        // REPLACE COLOR: remove old highlight and add new color
-        for (const oldH of overlapping) {
-          removePDFHighlight(docEntity.id, oldH.id);
-        }
-        const newHighlight: PDFHighlightAnnotation = {
-          id: `hl_pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          pageNumber: pageNum,
-          color,
-          rects,
-          text: textToolbar.text,
-          createdAt: Date.now(),
-        };
-        addPDFHighlight(docEntity.id, newHighlight);
-      } else {
-        // ADD NEW HIGHLIGHT
-        const newHighlight: PDFHighlightAnnotation = {
-          id: `hl_pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          pageNumber: pageNum,
-          color,
-          rects,
-          text: textToolbar.text,
-          createdAt: Date.now(),
-        };
-        addPDFHighlight(docEntity.id, newHighlight);
+    if (sameColorOverlapping.length > 0) {
+      // TOGGLE OFF: Undo / remove highlight
+      for (const h of sameColorOverlapping) {
+        removePDFHighlight(docEntity.id, h.id);
       }
+    } else if (overlapping.length > 0) {
+      // REPLACE COLOR: remove old highlight and add new color
+      for (const oldH of overlapping) {
+        removePDFHighlight(docEntity.id, oldH.id);
+      }
+      const newHighlight: PDFHighlightAnnotation = {
+        id: `hl_pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        pageNumber: pageNum,
+        color,
+        rects: relRects,
+        text: activeSelection.text,
+        createdAt: Date.now(),
+      };
+      addPDFHighlight(docEntity.id, newHighlight);
+    } else {
+      // ADD NEW HIGHLIGHT
+      const newHighlight: PDFHighlightAnnotation = {
+        id: `hl_pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        pageNumber: pageNum,
+        color,
+        rects: relRects,
+        text: activeSelection.text,
+        createdAt: Date.now(),
+      };
+      addPDFHighlight(docEntity.id, newHighlight);
     }
 
-    window.getSelection()?.removeAllRanges();
-    setTextToolbar(null);
+    setActiveSelection(null);
   };
 
-  const handleCopyText = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (textToolbar?.text) {
-      navigator.clipboard.writeText(textToolbar.text);
+  const handleCopyText = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
     }
-    window.getSelection()?.removeAllRanges();
-    setTextToolbar(null);
+    if (activeSelection?.text) {
+      navigator.clipboard.writeText(activeSelection.text);
+    }
+    setActiveSelection(null);
   };
 
   // Header dragging refs
@@ -1156,51 +1334,22 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
               height={pageHeights[pageNum] || Math.round(docEntity.width * 1.414)}
               isSelectTool={isSelectTool}
               highlights={docEntity.highlights}
+              activeSelection={activeSelection}
+              onSelectionChange={setActiveSelection}
             />
           ))}
       </div>
 
-      {/* 3. Custom Vector Text Selection Overlay (Acrobat / Google Docs Architecture) */}
-      {textToolbar && textToolbar.visible && textToolbar.rects.length > 0 && createPortal(
-        <div
-          id="wb-pdf-selection-overlay"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 999,
-          }}
-        >
-          {textToolbar.rects.map((rect, idx) => (
-            <div
-              key={`sel_box_${idx}`}
-              className="wb-pdf-selection-box"
-              style={{
-                position: 'fixed',
-                left: `${rect.left}px`,
-                top: `${rect.top}px`,
-                width: `${rect.width}px`,
-                height: `${rect.height}px`,
-                backgroundColor: 'rgba(0, 120, 215, 0.22)',
-                borderRadius: '2px',
-                pointerEvents: 'none',
-              }}
-            />
-          ))}
-        </div>,
-        document.body
-      )}
-
-      {/* 4. Edge/Acrobat Style Floating Text Selection Mini-Toolbar (Milestone 22) */}
-      {textToolbar && textToolbar.visible && createPortal(
+      {/* Floating Text Selection Quick Bar (PdfCraft Architecture) */}
+      {activeSelection && activeSelection.rects.length > 0 && createPortal(
         <div
           id="wb-pdf-text-toolbar"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
-            left: `${textToolbar.screenX}px`,
-            top: `${textToolbar.screenY}px`,
+            left: `${activeSelection.screenX}px`,
+            top: `${activeSelection.screenY}px`,
             transform: 'translateX(-50%)',
             display: 'flex',
             alignItems: 'center',
@@ -1219,37 +1368,23 @@ export const PDFDocumentWidget: React.FC<PDFDocumentWidgetProps> = memo(({ docum
           {/* 5 Quick Highlight Edge/Acrobat Pastel Color Pills */}
           {(() => {
             let activeColor: string | null = null;
-            if (textToolbar && textToolbar.rects.length > 0 && widgetContainerRef.current) {
-              const pageCards = Array.from(widgetContainerRef.current.querySelectorAll<HTMLElement>('.wb-pdf-page-card'));
+            if (activeSelection && activeSelection.rects.length > 0) {
+              const pageNum = activeSelection.pageNumber;
+              const pageWidth = docEntity.width;
+              const pageHeight = pageHeights[pageNum] || Math.round(pageWidth * 1.414);
+              const relRects: PDFHighlightRect[] = activeSelection.rects.map((r) => ({
+                relX: Math.max(0, Math.min(1, r.x / pageWidth)),
+                relY: Math.max(0, Math.min(1, r.y / pageHeight)),
+                width: Math.max(0.005, Math.min(1, r.width / pageWidth)),
+                height: Math.max(0.005, Math.min(1, r.height / pageHeight)),
+              }));
               const currentDoc = (sceneStore.getEntity(docEntity.id) as PDFDocumentEntity | undefined) || docEntity;
               const highlights = currentDoc.highlights || [];
-
-              for (const rect of textToolbar.rects) {
-                const midY = rect.top + rect.height / 2;
-                const matchingCard =
-                  pageCards.find((card) => {
-                    const cRect = card.getBoundingClientRect();
-                    return midY >= cRect.top && midY <= cRect.bottom;
-                  }) || pageCards[0];
-
-                if (matchingCard) {
-                  const pageNum = parseInt(matchingCard.getAttribute('data-page-number') || '1', 10);
-                  const cRect = matchingCard.getBoundingClientRect();
-                  const relRect: PDFHighlightRect = {
-                    relX: Math.max(0, Math.min(1, (rect.left - cRect.left) / cRect.width)),
-                    relY: Math.max(0, Math.min(1, (rect.top - cRect.top) / cRect.height)),
-                    width: Math.max(0.005, Math.min(1, rect.width / cRect.width)),
-                    height: Math.max(0.005, Math.min(1, rect.height / cRect.height)),
-                  };
-
-                  const matchingHl = highlights.find(
-                    (h) => h.pageNumber === pageNum && doesHighlightOverlapRects(h, [relRect])
-                  );
-                  if (matchingHl) {
-                    activeColor = matchingHl.color.toLowerCase();
-                    break;
-                  }
-                }
+              const matchingHl = highlights.find(
+                (h) => h.pageNumber === pageNum && doesHighlightOverlapRects(h, relRects)
+              );
+              if (matchingHl) {
+                activeColor = matchingHl.color.toLowerCase();
               }
             }
 

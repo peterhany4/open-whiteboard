@@ -54,6 +54,8 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Locked Object Selection & Unlock Action** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `BoardEditorComponent-84781932.*.js` | Modules 93425, 84781932 | Inking mode pointerEvents isolation, Select mode locked entity selection state, one-click Unlock context action |
 | **Sticky Note & Text Direct Inline Editing** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `8854.*.js` | Modules 93425, 8854, 770023 | Selection box interior pointer pass-through, click-to-edit focus lifecycle, textarea auto-expand, Escape blur |
 | **Smart PDF Text Highlighting & Quick Bar** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `65345.*.js` | Modules 93425, 65345 | PDF.js text layer selection coordinates, floating Fluent highlight/copy mini-bar, proximity snap-to-text line highlights |
+| **PdfCraft Text Selection & Reading-Order Engine** | `C:\Program Files\PdfCraft\pdfcraft.exe` & `storytold/pdfcraft` | `crates/ui-egui/src/canvas.rs`, `crates/render/src/text.rs` | Magnetic line-lock with 3.0x vertical penalty (`nearest(x, y)`), continuous line rect merging (`merged_rects`), progressive multi-click expansion (1=char, 2=word, 3=line, 4=page), block/column select (`Alt` key), clean text reconstruction without ragged DOM artifacts |
+
 
 ---
 
@@ -438,11 +440,65 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 28: PdfCraft-Engineered Reading-Order PDF Selection Engine (Magnetic Line Lock, Multi-Click Expansion & Clean Line Merging)
+- [x] **28.1 Target Architecture & Algorithms Extraction (PdfCraft REA Analysis):**
+  - Reverse-Engineered from `C:\Program Files\PdfCraft` (PE x86_64, ArtCraft Team) and open-source Rust workbench (`storytold/pdfcraft`):
+    - `crates/render/src/text.rs`:
+      - `nearest(x, y)` with **3.0x vertical distance penalty**: `dist = dx + 3.0 * dy`. Prevents horizontal text selection drag from jumping erratically to lines above or below when slight pointer vertical jitter occurs.
+      - `merged_rects` / `line_rects`: Iterates over selected glyphs on the same line, merging adjacent or consecutive glyphs into single, continuous vector highlight rectangles (`union(rect, &g.rect)`).
+      - `word_at(page, idx)` and `line_at(page, idx)`: Resolves word and line boundaries by whitespace and line cluster analysis.
+      - `column_text` / `Span::Column`: Spatial bounding-box glyph gathering with tab-separated column formatting.
+    - `crates/ui-egui/src/canvas.rs`:
+      - `selection_drag` state machine: Tracks `start_glyph`, `current_glyph`, and `click_unit`.
+      - Multi-click progression: 1 click = Character, 2 clicks = Word (`word_at`), 3 clicks = Line (`line_at`), 4 clicks = Whole Page. Dragging after double/triple-click expands the selection in units of words or lines rather than raw characters.
+- [x] **28.2 Dedicated PDF Text Layout & Hit-Testing Module (`src/components/canvas/pdfTextLayout.ts`):**
+  - Implement a high-performance text layout engine for PDF pages:
+    - Extract structured glyphs / character tokens from PDF.js `textContent` (`items` with `transform`, `width`, `height`, and `str`).
+    - Build normalized character array `PDFGlyphItem[]` with `relX`, `relY`, `width`, `height`, `char`, `lineIndex`, and `wordIndex`.
+    - Implement `findNearestGlyph(x, y, glyphs)` applying PdfCraft's exact algorithm:
+      - If point is inside glyph quad: direct hit (distance = 0).
+      - If outside: compute horizontal distance `dx` and vertical distance `dy`, returning the minimum weighted score `dx + 3.0 * dy`.
+    - Implement `computeMergedLineRects(glyphs, startIndex, endIndex)`:
+      - Groups selected glyphs by `lineIndex`.
+      - Computes exactly ONE unbroken bounding rectangle per line.
+    - Implement semantic boundary helpers:
+      - `getWordRangeAt(glyphs, index)`: Scans outward to preceding/succeeding whitespace or punctuation.
+      - `getLineRangeAt(glyphs, index)`: Returns all glyphs sharing the same `lineIndex`.
+      - `extractCleanText(glyphs, startIndex, endIndex)`: Formats clean text with appropriate spacing and newlines for clipboard copy (`Ctrl+C`).
+- [x] **28.3 Direct Pointer-Driven Selection Engine & Fluent Overlay in `PDFDocumentWidget.tsx`:**
+  - Transition from native DOM browser selection traps to direct canvas-level pointer tracking:
+    - In `PDFPageItem`:
+      - Wire `onPointerDown`, `onPointerMove`, and `onPointerUp` on the page card when in `Select` mode (`pointerId` capture).
+      - Track click timestamps to detect single, double, triple, and quadruple clicks:
+        - 1 click: Drag selects character-by-character with 3.0x magnetic line lock.
+        - 2 clicks (double-click): Selects word and dragging expands word-by-word.
+        - 3 clicks (triple-click): Selects full line and dragging expands line-by-line.
+        - 4 clicks: Selects entire page.
+      - Option/Alt key support: rectangular block selection across columns.
+    - Render in-page vector selection overlay:
+      - Render crisp Fluent translucent blue rectangles (`rgba(0, 120, 215, 0.22)`) directly inside the page's SVG/vector layer using the merged line rects.
+      - Completely eliminate kerning mismatches, overlapping boxes, and double-letter artifacts.
+    - Integrate with Quick Bar & Page Highlights:
+      - Floating Quick Bar appears smoothly at selection end with 5 pastel highlight pills, `Copy (Ctrl+C)`, and `Dismiss (Esc)`.
+      - Clicking a highlight color creates structured `PDFHighlightAnnotation` rects derived directly from `computeMergedLineRects`, guaranteeing 100% pixel alignment between selection preview and permanent highlight!
+    - Clipboard Synchronization:
+      - Register document-level `copy` listener (`Ctrl+C`) to copy `extractCleanText` to system clipboard.
+- [x] **28.4 Automated Test Verification & Clean Production Build:**
+  - Create `scratch/test_milestone28_pdfcraft_selection.js` verifying:
+    1. Magnetic Line Lock: vertical jitter of ±5px on a line does not cause premature jump to adjacent line due to 3.0x penalty.
+    2. Continuous Line Merging: consecutive glyphs on the same line produce exactly 1 unified rect, not N fragmented rects.
+    3. Multi-Click Unit Expansion: double-click extracts word boundaries, triple-click extracts full line boundaries.
+    4. Text Extraction & Clipboard: `extractCleanText` reconstructs words and newlines cleanly without missing whitespace.
+  - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `27.4 Automated Test Verification & Clean Production Build (Milestone 27 complete)`
-- **Current Active Sub-Task:** `Milestone 27 Complete — Verified with Automated Test Suite & Clean Production Build`
-- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 27, or specify the next milestone or feature!"`
+- **Last Completed Sub-Task:** `28.4 Automated Test Verification & Clean Production Build (Milestone 28 complete)`
+- **Current Active Sub-Task:** `Milestone 28 Complete — Verified with Automated Test Suite & Clean Production Build`
+- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 28, or specify the next milestone or feature!"`
+
 
 
