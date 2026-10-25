@@ -497,8 +497,8 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
 - **Last Completed Sub-Task:** `28.4 Automated Test Verification & Clean Production Build (Milestone 28 complete)`
-- **Current Active Sub-Task:** `Milestone 28 Complete — Verified with Automated Test Suite & Clean Production Build`
-- **Next Recommended Prompt:** `"Ready for your feedback on Milestone 28, or specify the next milestone or feature!"`
+- **Current Active Sub-Task:** `Milestone 28 State Restored — Deployed to Vercel`
+- **Next Recommended Prompt:** `"Ready for next feature or milestone!"`
 
 
 
