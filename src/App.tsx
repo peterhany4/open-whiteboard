@@ -20,6 +20,9 @@ function WhiteboardCanvas() {
         height: '100%',
         position: 'relative',
         overflow: 'hidden',
+        touchAction: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     >
       {/* 1. Top Board Header (Milestone 1.4 & 7.3) */}
@@ -37,6 +40,7 @@ function WhiteboardCanvas() {
             width: '100%',
             height: '100%',
             pointerEvents: 'none',
+            touchAction: 'none',
           }}
         />
       </CanvasViewport>

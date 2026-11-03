@@ -48,6 +48,7 @@ export interface LiveStrokeState {
   width: number;
   points: InkStrokePoint[];
   pathD: string;
+  outlineD?: string;
   arrowMode: PenArrowMode;
   arrowStartGeometry?: ArrowHeadGeometry;
   arrowEndGeometry?: ArrowHeadGeometry;
@@ -115,13 +116,18 @@ export class PenToolEngine {
     worldPt = snapResult.point;
     this.activeRulerEdge = snapResult.edge;
 
-    // Initial pressure calibration (default 0.5 if 0 or unsupported)
+    // Initial pressure calibration (Module 773625 resting pressure 0.5)
     const initialPressure = e.pressure > 0 ? e.pressure : 0.5;
+    const baseThickness = penConfig ? penConfig.thickness : 2;
+    const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, initialPressure)), 0.75);
+    // Tapered entry width
+    const startWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm) * 0.4).toFixed(2));
 
     const startPoint: InkStrokePoint = {
       x: worldPt.x,
       y: worldPt.y,
       pressure: initialPressure,
+      width: startWidth,
       time: e.timeStamp || Date.now(),
     };
 
@@ -187,17 +193,22 @@ export class PenToolEngine {
       const dist = Math.hypot(worldPt.x - prevPt.x, worldPt.y - prevPt.y);
       const velocity = dist / dt; // pixels per millisecond
 
-      let pressure = ev.pressure;
-      if (pressure <= 0 || ev.pointerType === 'mouse') {
+      let rawPressure = ev.pressure;
+      if (rawPressure <= 0 || ev.pointerType === 'mouse') {
         // Fast movement = thinner line; Slow movement = thicker line
         const velocityFactor = Math.max(0.3, Math.min(1.4, 1.25 - velocity * 0.2));
-        pressure = 0.5 * velocityFactor;
+        rawPressure = 0.5 * velocityFactor;
       }
+
+      // Graphic tablet calibrated power curve: p_norm = p^0.75 (Milestone 29.2)
+      const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, rawPressure)), 0.75);
+      const computedWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm)).toFixed(2));
 
       const rawPt: InkStrokePoint = {
         x: worldPt.x,
         y: worldPt.y,
-        pressure,
+        pressure: rawPressure,
+        width: computedWidth,
         time: ev.timeStamp || Date.now(),
       };
       this.rawPoints.push(rawPt);
@@ -240,8 +251,18 @@ export class PenToolEngine {
     const arrowMode = penConfig ? penConfig.arrowMode : 'NoArrow';
     const effect = penConfig?.effect;
 
-    // Build finalized points
+    // Build finalized points with entry and exit tapering (Milestone 29.2)
     const finalPoints = [...this.filteredPoints];
+    if (finalPoints.length >= 6) {
+      finalPoints[0].width = parseFloat(((finalPoints[0].width || baseThickness) * 0.35).toFixed(2));
+      finalPoints[1].width = parseFloat(((finalPoints[1].width || baseThickness) * 0.65).toFixed(2));
+      finalPoints[2].width = parseFloat(((finalPoints[2].width || baseThickness) * 0.85).toFixed(2));
+
+      const n = finalPoints.length;
+      finalPoints[n - 3].width = parseFloat(((finalPoints[n - 3].width || baseThickness) * 0.85).toFixed(2));
+      finalPoints[n - 2].width = parseFloat(((finalPoints[n - 2].width || baseThickness) * 0.65).toFixed(2));
+      finalPoints[n - 1].width = parseFloat(((finalPoints[n - 1].width || baseThickness) * 0.35).toFixed(2));
+    }
 
     // Compute dynamic velocity / pressure width modulation
     let totalPressure = 0;
@@ -356,6 +377,7 @@ export class PenToolEngine {
       x: parseFloat(filteredX.toFixed(2)),
       y: parseFloat(filteredY.toFixed(2)),
       pressure: pt.pressure,
+      width: pt.width,
       time: pt.time,
     };
   }
@@ -373,6 +395,7 @@ export class PenToolEngine {
     if (points.length === 0) return;
 
     const pathD = this.generateSmoothPath(points);
+    const outlineD = this.generateStrokeOutline(points, thickness);
 
     let arrowStartGeometry: ArrowHeadGeometry | undefined;
     let arrowEndGeometry: ArrowHeadGeometry | undefined;
@@ -395,6 +418,7 @@ export class PenToolEngine {
       width: thickness,
       points,
       pathD,
+      outlineD: outlineD || undefined,
       arrowMode,
       arrowStartGeometry,
       arrowEndGeometry,
@@ -518,6 +542,77 @@ export class PenToolEngine {
       }
     }
     return this.calculateArrowHead(from, tip, thickness);
+  }
+  /**
+   * Generates dynamic variable-width outline ribbon geometry for pressure-sensitive graphic tablets (Milestone 29.2)
+   */
+  public generateStrokeOutline(points: InkStrokePoint[], defaultWidth: number): string {
+    if (points.length < 2) {
+      if (points.length === 1) {
+        const r = (points[0].width || defaultWidth) / 2;
+        return `M ${(points[0].x - r).toFixed(2)} ${points[0].y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(points[0].x + r).toFixed(2)} ${points[0].y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(points[0].x - r).toFixed(2)} ${points[0].y.toFixed(2)} Z`;
+      }
+      return '';
+    }
+
+    // Check if stroke exhibits variable width dynamics (> 0.3px delta)
+    let hasVariation = false;
+    const firstW = points[0].width || defaultWidth;
+    for (let i = 1; i < points.length; i++) {
+      const w = points[i].width || defaultWidth;
+      if (Math.abs(w - firstW) > 0.3) {
+        hasVariation = true;
+        break;
+      }
+    }
+    if (!hasVariation) return '';
+
+    const leftPts: Point[] = [];
+    const rightPts: Point[] = [];
+
+    for (let i = 0; i < points.length; i++) {
+      const curr = points[i];
+      const prev = i > 0 ? points[i - 1] : points[i];
+      const next = i < points.length - 1 ? points[i + 1] : points[i];
+
+      let dx = next.x - prev.x;
+      let dy = next.y - prev.y;
+      let len = Math.hypot(dx, dy);
+      if (len < 0.001) {
+        dx = 1;
+        dy = 0;
+        len = 1;
+      }
+
+      // Normal vector perpendicular to trajectory
+      const nx = -dy / len;
+      const ny = dx / len;
+      const halfW = (curr.width || defaultWidth) / 2;
+
+      leftPts.push({ x: curr.x + nx * halfW, y: curr.y + ny * halfW });
+      rightPts.push({ x: curr.x - nx * halfW, y: curr.y - ny * halfW });
+    }
+
+    // Build closed ribbon path
+    let d = `M ${leftPts[0].x.toFixed(2)} ${leftPts[0].y.toFixed(2)}`;
+    for (let i = 1; i < leftPts.length; i++) {
+      d += ` L ${leftPts[i].x.toFixed(2)} ${leftPts[i].y.toFixed(2)}`;
+    }
+
+    const endHalfW = (points[points.length - 1].width || defaultWidth) / 2;
+    const lastRight = rightPts[rightPts.length - 1];
+    d += ` A ${endHalfW.toFixed(2)} ${endHalfW.toFixed(2)} 0 0 1 ${lastRight.x.toFixed(2)} ${lastRight.y.toFixed(2)}`;
+
+    for (let i = rightPts.length - 1; i >= 0; i--) {
+      d += ` L ${rightPts[i].x.toFixed(2)} ${rightPts[i].y.toFixed(2)}`;
+    }
+
+    const startHalfW = (points[0].width || defaultWidth) / 2;
+    const firstLeft = leftPts[0];
+    d += ` A ${startHalfW.toFixed(2)} ${startHalfW.toFixed(2)} 0 0 1 ${firstLeft.x.toFixed(2)} ${firstLeft.y.toFixed(2)}`;
+    d += ' Z';
+
+    return d;
   }
 }
 

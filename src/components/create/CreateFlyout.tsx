@@ -22,6 +22,19 @@ export const CreateFlyout: React.FC = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
+  // Milestone 29.4: Mobile responsive bottom sheet (<640px)
+  const [isMobile, setIsMobile] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+
+  React.useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Close on outside click
   useEffect(() => {
     function handlePointerDown(e: MouseEvent) {
@@ -223,6 +236,22 @@ export const CreateFlyout: React.FC = () => {
 
   return (
     <>
+      {/* Mobile backdrop overlay */}
+      {isMobile && isCreatePanelOpen && (
+        <div
+          onClick={() => canvasStore.closeCreatePanel()}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.35)',
+            zIndex: 1015,
+          }}
+        />
+      )}
+
       {/* 1. Floating Circular "+" Button Trigger */}
       <button
         id="wb-create-toggle-button"
@@ -277,11 +306,12 @@ export const CreateFlyout: React.FC = () => {
           aria-label="Create Panel Flyout"
           style={{
             position: 'fixed',
-            top: '64px',
-            left: '68px',
-            width: '310px',
-            maxHeight: 'calc(100vh - 120px)',
-            borderRadius: 'var(--wb-ribbon-border-radius, 12px)',
+            top: isMobile ? 'auto' : '64px',
+            bottom: isMobile ? '0' : 'auto',
+            left: isMobile ? '0' : '68px',
+            width: isMobile ? '100%' : '310px',
+            maxHeight: isMobile ? '70vh' : 'calc(100vh - 120px)',
+            borderRadius: isMobile ? '16px 16px 0 0' : 'var(--wb-ribbon-border-radius, 12px)',
             backgroundColor: 'var(--wb-acrylic-background)',
             backdropFilter: 'var(--wb-acrylic-backdrop-filter)',
             WebkitBackdropFilter: 'var(--wb-acrylic-backdrop-filter)',

@@ -14,6 +14,19 @@ export const ZoomHUD: React.FC = () => {
   const { zoom } = useCanvasStore();
   const { mode, toggleTheme } = useTheme();
 
+  // Milestone 29.4: Mobile responsive breakpoint (<640px)
+  const [isMobile, setIsMobile] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+
+  React.useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const zoomPercent = Math.round(zoom * 100);
 
   return (
@@ -22,8 +35,8 @@ export const ZoomHUD: React.FC = () => {
       aria-label="Zoom and Theme HUD"
       style={{
         position: 'fixed',
-        bottom: '20px',
-        right: '20px',
+        bottom: isMobile ? '84px' : '20px',
+        right: isMobile ? '12px' : '20px',
         height: '42px',
         padding: '0 8px',
         display: 'flex',

@@ -50,6 +50,7 @@ export interface InkStrokePoint {
   x: number;
   y: number;
   pressure?: number;
+  width?: number;
   time?: number;
 }
 

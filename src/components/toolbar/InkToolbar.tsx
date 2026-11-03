@@ -37,6 +37,29 @@ export const InkToolbar: React.FC = () => {
 
   const toolbarRef = useRef<HTMLDivElement>(null);
 
+  // Milestone 29.3: Horizontal scroll & edge fade indicators
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+
+  const checkScroll = React.useCallback(() => {
+    if (!toolbarRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = toolbarRef.current;
+    setCanScrollLeft(scrollLeft > 4);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 4);
+  }, []);
+
+  React.useEffect(() => {
+    checkScroll();
+    const el = toolbarRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('resize', checkScroll);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [checkScroll]);
+
 
 
   const handleToolClick = (tool: InkingTool) => {
@@ -102,6 +125,11 @@ export const InkToolbar: React.FC = () => {
           bottom: '20px',
           left: '50%',
           transform: 'translateX(-50%)',
+          maxWidth: 'calc(100vw - 24px)',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
           height: 'var(--wb-ribbon-height, 52px)',
           padding: '0 8px',
           display: 'flex',
@@ -115,6 +143,22 @@ export const InkToolbar: React.FC = () => {
           boxShadow: 'var(--wb-acrylic-shadow)',
           zIndex: 1000,
           userSelect: 'none',
+          maskImage:
+            canScrollLeft && canScrollRight
+              ? 'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)'
+              : canScrollLeft
+              ? 'linear-gradient(to right, transparent, black 16px, black 100%)'
+              : canScrollRight
+              ? 'linear-gradient(to right, black calc(100% - 16px), transparent)'
+              : 'none',
+          WebkitMaskImage:
+            canScrollLeft && canScrollRight
+              ? 'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)'
+              : canScrollLeft
+              ? 'linear-gradient(to right, transparent, black 16px, black 100%)'
+              : canScrollRight
+              ? 'linear-gradient(to right, black calc(100% - 16px), transparent)'
+              : 'none',
         }}
       >
         {/* 0. Navigation Tools: Select (Cursor) & Pan (Hand) */}
@@ -128,6 +172,7 @@ export const InkToolbar: React.FC = () => {
             position: 'relative',
             width: '42px',
             height: '44px',
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -172,6 +217,7 @@ export const InkToolbar: React.FC = () => {
             position: 'relative',
             width: '42px',
             height: '44px',
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -529,6 +575,7 @@ export const InkToolbar: React.FC = () => {
             position: 'relative',
             width: '42px',
             height: '44px',
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -569,6 +616,7 @@ export const InkToolbar: React.FC = () => {
             position: 'relative',
             width: '42px',
             height: '44px',
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

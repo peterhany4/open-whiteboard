@@ -107,6 +107,10 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
     lastMidpoint: Point;
   } | null>(null);
 
+  // Milestone 29: Stylus & Touch Discrimination with Hardware Palm Rejection
+  const isPenActiveRef = useRef(false);
+  const activeTouchPointersRef = useRef<Map<number, Point>>(new Map());
+
   // 1. Wheel & Pinch-to-Zoom Listener (passive: false to prevent browser zoom)
   useEffect(() => {
     const el = viewportRef.current;
@@ -555,6 +559,60 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         )
     );
 
+    const isPen = e.pointerType === 'pen';
+    const isTouch = e.pointerType === 'touch';
+
+    // Hardware Palm Rejection: If stylus pen is active/down, discard incoming touch events
+    if (isPenActiveRef.current && isTouch) {
+      return;
+    }
+
+    if (isPen) {
+      isPenActiveRef.current = true;
+    }
+
+    if (isTouch) {
+      activeTouchPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      // Multi-touch gesture handling (pinch-to-zoom & two-finger pan)
+      if (activeTouchPointersRef.current.size >= 2) {
+        // Cancel active single-touch stroke immediately to prevent stray ink dots
+        if (penTool.isCurrentlyDrawing()) penTool.cancel();
+        if (highlighterTool.isCurrentlyDrawing()) highlighterTool.cancel();
+        if (laserTool.isCurrentlyDrawing()) laserTool.cancel();
+        if (eraserTool.isCurrentlyErasing()) eraserTool.cancel();
+        if (lassoTool.isCurrentlyLassoing()) lassoTool.cancel();
+        selectTool.cancel();
+
+        const [t1, t2] = Array.from(activeTouchPointersRef.current.values()) as [Point, Point];
+        const dist = Math.hypot(t1.x - t2.x, t1.y - t2.y);
+        const midpoint = { x: (t1.x + t2.x) / 2, y: (t1.y + t2.y) / 2 };
+
+        touchStateRef.current = {
+          initialDistance: Math.max(10, dist),
+          initialScale: camera.scale,
+          lastMidpoint: midpoint,
+        };
+        isDraggingRef.current = false;
+        canvasStore.setIsPanning(true);
+        return;
+      }
+
+      // Single touch navigation when inkWithTouch is disabled
+      if (!inking.inkWithTouch) {
+        if (!isInteractiveFloatingUI) {
+          e.preventDefault();
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {}
+          isDraggingRef.current = true;
+          lastPointerRef.current = { x: e.clientX, y: e.clientY };
+          canvasStore.setIsPanning(true);
+        }
+        return;
+      }
+    }
+
     // 1. Right-Click Hold & Drag Viewport Pan (Milestone 15.1 & Milestone 27.1)
     if (e.button === 2) {
       if (!isInteractiveFloatingUI) {
@@ -668,6 +726,46 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const isPen = e.pointerType === 'pen';
+    const isTouch = e.pointerType === 'touch';
+
+    // Hardware Palm Rejection: Discard touch movements when pen is active
+    if (isPenActiveRef.current && isTouch) {
+      return;
+    }
+
+    if (isTouch && activeTouchPointersRef.current.has(e.pointerId)) {
+      activeTouchPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      // Multi-touch pinch-to-zoom & pan
+      if (activeTouchPointersRef.current.size >= 2 && touchStateRef.current) {
+        e.preventDefault();
+        const [t1, t2] = Array.from(activeTouchPointersRef.current.values()) as [Point, Point];
+        const dist = Math.hypot(t1.x - t2.x, t1.y - t2.y);
+        const midpoint = { x: (t1.x + t2.x) / 2, y: (t1.y + t2.y) / 2 };
+
+        const dx = midpoint.x - touchStateRef.current.lastMidpoint.x;
+        const dy = midpoint.y - touchStateRef.current.lastMidpoint.y;
+        touchStateRef.current.lastMidpoint = midpoint;
+        canvasStore.panBy(dx, dy);
+
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const distanceRatio = dist / touchStateRef.current.initialDistance;
+        const targetScale = touchStateRef.current.initialScale * distanceRatio;
+        canvasStore.zoomAtPoint(targetScale, midpoint, rect);
+        return;
+      }
+
+      // Single-touch pan when inkWithTouch is off
+      if (!inking.inkWithTouch && isDraggingRef.current) {
+        e.preventDefault();
+        const dx = e.clientX - lastPointerRef.current.x;
+        const dy = e.clientY - lastPointerRef.current.y;
+        lastPointerRef.current = { x: e.clientX, y: e.clientY };
+        canvasStore.panBy(dx, dy);
+        return;
+      }
+    }
     // 1. Right-Click Drag Pan (Threshold > 3px activates smooth panning hand)
     if (isRightClickDownRef.current) {
       e.preventDefault();
@@ -754,6 +852,26 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'pen') {
+      isPenActiveRef.current = false;
+    }
+
+    if (e.pointerType === 'touch') {
+      activeTouchPointersRef.current.delete(e.pointerId);
+      if (activeTouchPointersRef.current.size < 2) {
+        touchStateRef.current = null;
+      }
+      if (activeTouchPointersRef.current.size === 0) {
+        if (isDraggingRef.current && !inking.inkWithTouch) {
+          isDraggingRef.current = false;
+          canvasStore.setIsPanning(false);
+          try {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          } catch {}
+          return;
+        }
+      }
+    }
     // 1. Release Right-Click (Pan Hand vs Single-Click Context Options)
     if (e.button === 2 || isRightClickDownRef.current) {
       const wasDragged = hasRightClickDraggedRef.current;
@@ -854,6 +972,19 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'pen') {
+      isPenActiveRef.current = false;
+    }
+    if (e.pointerType === 'touch') {
+      activeTouchPointersRef.current.delete(e.pointerId);
+      if (activeTouchPointersRef.current.size < 2) {
+        touchStateRef.current = null;
+      }
+      if (activeTouchPointersRef.current.size === 0 && !inking.inkWithTouch) {
+        isDraggingRef.current = false;
+        canvasStore.setIsPanning(false);
+      }
+    }
     isRightClickDownRef.current = false;
     hasRightClickDraggedRef.current = false;
     isRightClickPanningRef.current = false;
@@ -1208,20 +1339,34 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
                   <stop offset="100%" stopColor="#E1B12C" />
                 </linearGradient>
               </defs>
-              <path
-                d={liveStroke.pathD}
-                fill="none"
-                stroke={
-                  liveStroke.effect === 'rainbow'
-                    ? 'url(#liveRainbowGradient)'
-                    : liveStroke.effect === 'galaxy'
-                    ? 'url(#liveGalaxyGradient)'
-                    : liveStroke.color
-                }
-                strokeWidth={liveStroke.width}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+              {liveStroke.outlineD ? (
+                <path
+                  d={liveStroke.outlineD}
+                  fill={
+                    liveStroke.effect === 'rainbow'
+                      ? 'url(#liveRainbowGradient)'
+                      : liveStroke.effect === 'galaxy'
+                      ? 'url(#liveGalaxyGradient)'
+                      : liveStroke.color
+                  }
+                  stroke="none"
+                />
+              ) : (
+                <path
+                  d={liveStroke.pathD}
+                  fill="none"
+                  stroke={
+                    liveStroke.effect === 'rainbow'
+                      ? 'url(#liveRainbowGradient)'
+                      : liveStroke.effect === 'galaxy'
+                      ? 'url(#liveGalaxyGradient)'
+                      : liveStroke.color
+                  }
+                  strokeWidth={liveStroke.width}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
               {liveStroke.arrowStartGeometry && (
                 <polyline
                   points={`${liveStroke.arrowStartGeometry.wing1.x},${liveStroke.arrowStartGeometry.wing1.y} ${liveStroke.arrowStartGeometry.tip.x},${liveStroke.arrowStartGeometry.tip.y} ${liveStroke.arrowStartGeometry.wing2.x},${liveStroke.arrowStartGeometry.wing2.y}`}

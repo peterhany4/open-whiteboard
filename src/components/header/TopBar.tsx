@@ -13,22 +13,38 @@ import {
   ChevronLeftIcon,
   DocumentPDFIcon,
   ImageIcon,
+  HandIcon,
 } from '../../assets/icons';
 import type { GridPatternType } from '../../canvas/grid';
 import { ExportEngine } from '../../tools/ExportEngine';
 import { useBoardStore, boardStore } from '../../store/boardStore';
 import { sceneStore } from '../../store/sceneStore';
+import { inkingStore, useInkingStore } from '../../store/inkingStore';
 import { WindowControls } from '../electron/WindowControls';
 
 export const TopBar: React.FC = () => {
   const { boardTitle, canUndo, canRedo, isSettingsOpen, gridPattern, isEnhanceInkedShapesEnabled } = useCanvasStore();
   const { isSaving } = useBoardStore();
+  const inking = useInkingStore();
   const { mode, toggleTheme } = useTheme();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(boardTitle);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Milestone 29.4: Mobile responsive breakpoint (<640px)
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -300,16 +316,27 @@ export const TopBar: React.FC = () => {
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--colorNeutralBackground1Hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
-            <span>{boardTitle}</span>
             <span
               style={{
-                fontSize: '11px',
-                color: isSaving ? 'var(--wb-color-brand, #0078D4)' : 'var(--colorNeutralForeground3)',
-                fontWeight: 400,
+                maxWidth: isMobile ? '95px' : '220px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
-              {isSaving ? 'Saving...' : 'Saved'}
+              {boardTitle}
             </span>
+            {!isMobile && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: isSaving ? 'var(--wb-color-brand, #0078D4)' : 'var(--colorNeutralForeground3)',
+                  fontWeight: 400,
+                }}
+              >
+                {isSaving ? 'Saving...' : 'Saved'}
+              </span>
+            )}
           </button>
         )}
 
@@ -410,8 +437,8 @@ export const TopBar: React.FC = () => {
             }}
           >
             <ExportIcon size={16} color="var(--themePrimary)" />
-            <span>{isExporting ? 'Exporting...' : 'Export'}</span>
-            <ChevronDownIcon size={12} />
+            {!isMobile && <span>{isExporting ? 'Exporting...' : 'Export'}</span>}
+            {!isMobile && <ChevronDownIcon size={12} />}
           </button>
 
           {/* Export Menu Dropdown Popover */}
@@ -721,6 +748,60 @@ export const TopBar: React.FC = () => {
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--colorNeutralForeground3)', lineHeight: '1.3' }}>
                   Automatically convert hand-drawn circles, squares, and lines into clean shapes
+                </span>
+              </div>
+
+              <div style={{ height: '1px', backgroundColor: 'var(--colorNeutralStroke1)' }} />
+
+              {/* Ink with Touch Toggle (Milestone 29.1) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <HandIcon size={14} color="var(--themePrimary)" />
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--colorNeutralForeground1)' }}>
+                      Ink with touch
+                    </span>
+                  </div>
+                  {/* Fluent Toggle Switch */}
+                  <button
+                    role="switch"
+                    title="Toggle Ink with Touch"
+                    aria-label="Ink with touch"
+                    aria-checked={inking.inkWithTouch}
+                    onClick={() => inkingStore.setInkWithTouch(!inking.inkWithTouch)}
+                    style={{
+                      width: '38px',
+                      height: '20px',
+                      borderRadius: '10px',
+                      backgroundColor: inking.inkWithTouch
+                        ? 'var(--themePrimary)'
+                        : 'var(--colorNeutralStroke1)',
+                      border: 'none',
+                      position: 'relative',
+                      cursor: 'pointer',
+                      padding: 0,
+                      transition: 'background-color 0.2s cubic-bezier(0.1, 0.9, 0.2, 1)',
+                      outline: 'none',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '14px',
+                        height: '14px',
+                        borderRadius: '50%',
+                        backgroundColor: '#FFFFFF',
+                        position: 'absolute',
+                        top: '3px',
+                        left: inking.inkWithTouch ? '21px' : '3px',
+                        transition: 'left 0.2s cubic-bezier(0.1, 0.9, 0.2, 1)',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                      }}
+                    />
+                  </button>
+                </div>
+                <span style={{ fontSize: '11px', color: 'var(--colorNeutralForeground3)', lineHeight: '1.3' }}>
+                  Draw with a single finger. When off, fingers pan and zoom while stylus pens draw with palm rejection.
                 </span>
               </div>
 

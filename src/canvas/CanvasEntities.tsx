@@ -12,8 +12,10 @@ import { penTool } from '../tools/PenTool';
 import { useTheme } from '../theme/ThemeProvider';
 
 const RenderStroke: React.FC<{ stroke: InkStrokeEntity; isDark?: boolean }> = memo(({ stroke, isDark = false }) => {
-  const pathD = penTool.generateSmoothPath(stroke.points);
   const isHighlighter = stroke.tool === 'highlighter' || stroke.isHighlighter;
+  // Milestone 29.2: Render variable-width outline ribbon for graphic tablets
+  const outlineD = !isHighlighter ? penTool.generateStrokeOutline(stroke.points, stroke.width) : '';
+  const pathD = outlineD ? '' : penTool.generateSmoothPath(stroke.points);
 
   const startArrow = stroke.arrowStart
     ? penTool.getArrowHeadForStart(stroke.points, stroke.width)
@@ -31,18 +33,27 @@ const RenderStroke: React.FC<{ stroke: InkStrokeEntity; isDark?: boolean }> = me
 
   return (
     <g id={`stroke-${stroke.id}`}>
-      <path
-        d={pathD}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth={stroke.width}
-        strokeLinecap={isHighlighter ? 'square' : 'round'}
-        strokeLinejoin={isHighlighter ? 'bevel' : 'round'}
-        opacity={isHighlighter ? (isDark ? 0.55 : 0.38) : 1.0}
-        style={{
-          mixBlendMode: isHighlighter ? (isDark ? 'screen' : 'multiply') : 'normal',
-        }}
-      />
+      {outlineD ? (
+        <path
+          d={outlineD}
+          fill={strokeColor}
+          stroke="none"
+          opacity={1.0}
+        />
+      ) : (
+        <path
+          d={pathD}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={stroke.width}
+          strokeLinecap={isHighlighter ? 'square' : 'round'}
+          strokeLinejoin={isHighlighter ? 'bevel' : 'round'}
+          opacity={isHighlighter ? (isDark ? 0.55 : 0.38) : 1.0}
+          style={{
+            mixBlendMode: isHighlighter ? (isDark ? 'screen' : 'multiply') : 'normal',
+          }}
+        />
+      )}
       {startArrow && (
         <polyline
           points={`${startArrow.wing1.x},${startArrow.wing1.y} ${startArrow.tip.x},${startArrow.tip.y} ${startArrow.wing2.x},${startArrow.wing2.y}`}

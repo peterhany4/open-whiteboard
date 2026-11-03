@@ -460,8 +460,8 @@ export class ExportEngine {
     for (const ent of sorted) {
       if (ent.type === 'stroke') {
         const stroke = ent as InkStrokeEntity;
-        const pathD = penTool.generateSmoothPath(stroke.points);
         const isHighlighter = stroke.tool === 'highlighter' || stroke.isHighlighter;
+        const outlineD = !isHighlighter ? penTool.generateStrokeOutline(stroke.points, stroke.width) : '';
         const color =
           stroke.effect === 'rainbow'
             ? 'url(#wbRainbowGradient)'
@@ -470,7 +470,12 @@ export class ExportEngine {
             : stroke.color;
         const opacity = isHighlighter ? (bgMode === 'dark' ? '0.55' : '0.38') : '1.0';
 
-        svgElements += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="${stroke.width}" stroke-linecap="${isHighlighter ? 'square' : 'round'}" stroke-linejoin="${isHighlighter ? 'bevel' : 'round'}" opacity="${opacity}" />\n`;
+        if (outlineD) {
+          svgElements += `<path d="${outlineD}" fill="${color}" opacity="${opacity}" />\n`;
+        } else {
+          const pathD = penTool.generateSmoothPath(stroke.points);
+          svgElements += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="${stroke.width}" stroke-linecap="${isHighlighter ? 'square' : 'round'}" stroke-linejoin="${isHighlighter ? 'bevel' : 'round'}" opacity="${opacity}" />\n`;
+        }
 
         if (stroke.arrowEnd) {
           const arrow = penTool.getArrowHeadForEnd(stroke.points, stroke.width);

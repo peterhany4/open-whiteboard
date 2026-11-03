@@ -16,6 +16,22 @@ export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
   const { eraser } = useInkingStore();
 
+  // Milestone 29.3: Viewport bounds clamping
+  const [shiftX, setShiftX] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!popoverRef.current) return;
+    const rect = popoverRef.current.getBoundingClientRect();
+    const margin = 12;
+    let shift = 0;
+    if (rect.left < margin) {
+      shift = margin - rect.left;
+    } else if (rect.right > window.innerWidth - margin) {
+      shift = window.innerWidth - margin - rect.right;
+    }
+    setShiftX(shift);
+  }, []);
+
   useEffect(() => {
     function handlePointerDown(e: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
@@ -82,7 +98,7 @@ export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
         position: 'absolute',
         bottom: 'calc(100% + 14px)',
         left: '50%',
-        transform: 'translateX(-50%)',
+        transform: `translateX(calc(-50% + ${shiftX}px))`,
         width: '210px',
         padding: '10px',
         borderRadius: 'var(--wb-card-border-radius, 8px)',
@@ -108,7 +124,7 @@ export const EraserPopover: React.FC<EraserPopoverProps> = ({ onClose }) => {
           position: 'absolute',
           bottom: '-6px',
           left: '50%',
-          transform: 'translateX(-50%) rotate(45deg)',
+          transform: `translateX(calc(-50% - ${shiftX}px)) rotate(45deg)`,
           width: '12px',
           height: '12px',
           backgroundColor: 'var(--colorNeutralBackground1)',

@@ -55,6 +55,7 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Sticky Note & Text Direct Inline Editing** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `8854.*.js` | Modules 93425, 8854, 770023 | Selection box interior pointer pass-through, click-to-edit focus lifecycle, textarea auto-expand, Escape blur |
 | **Smart PDF Text Highlighting & Quick Bar** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `65345.*.js` | Modules 93425, 65345 | PDF.js text layer selection coordinates, floating Fluent highlight/copy mini-bar, proximity snap-to-text line highlights |
 | **PdfCraft Text Selection & Reading-Order Engine** | `C:\Program Files\PdfCraft\pdfcraft.exe` & `storytold/pdfcraft` | `crates/ui-egui/src/canvas.rs`, `crates/render/src/text.rs` | Magnetic line-lock with 3.0x vertical penalty (`nearest(x, y)`), continuous line rect merging (`merged_rects`), progressive multi-click expansion (1=char, 2=word, 3=line, 4=page), block/column select (`Alt` key), clean text reconstruction without ragged DOM artifacts |
+| **Responsive Mobile UI & Graphic Tablet Inking Engine** | Microsoft Whiteboard Touch & Stylus Spec, W3C Pointer Events Level 3 | `CanvasViewport.tsx`, `PenTool.ts`, `InkToolbar.tsx`, `TopBar.tsx` | Touch-Action CSS Spec (`touch-action: none`), pointerType discrimination (`pen` vs `touch`), hardware palm rejection, two-finger pinch-to-zoom & pan, dynamic stylus pressure sensitivity (`p^0.75` stroke width modulation), horizontally scrollable mobile ink ribbon, collision-free HUD layout |
 
 
 ---
@@ -493,12 +494,71 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 29: Responsive Mobile UI & Graphic Tablet Inking Engine (Stylus Discrimination, Hardware Palm Rejection, Pressure Dynamics & Responsive Ribbon)
+- [x] **29.1 Canvas Viewport Touch/Stylus Discrimination & Hardware Palm Rejection:**
+  - W3C Pointer Events Level 3 & Mobile Viewport CSS:
+    - Add `touchAction: 'none'` across the canvas container and `#whiteboard-canvas-root` to completely block mobile browser pull-to-refresh, address-bar jitter, swipe-navigation, and default pinch-zoom gestures.
+    - Set `-webkit-user-select: none; user-select: none; -webkit-touch-callout: none;` on canvas interactions.
+  - Pointer Event Routing in `src/canvas/CanvasViewport.tsx`:
+    - Track active pointer types: `e.pointerType === 'pen'`, `'touch'`, or `'mouse'`.
+    - **Hardware Palm Rejection**: When a `pen` pointer is active (`isPenActive`), discard or suppress all simultaneous `'touch'` pointer events so palms resting on the tablet screen do not trigger stray strokes or accidental canvas panning.
+    - **Touch vs Stylus Discrimination**:
+      - If `e.pointerType === 'pen'`: Routes directly to the active inking tool (`penTool`, `highlighterTool`, `eraserTool`, etc.).
+      - If `e.pointerType === 'touch'`: Respect `inkWithTouch` setting (stored in `inkingStore.ts`).
+        - If `inkWithTouch === false` (default for graphic tablet and stylus workflow): Single touch pans the canvas; multi-touch (2+ fingers) pinch-zooms and pans seamlessly.
+        - If `inkWithTouch === true`: Single touch draws ink, but if a 2nd touch pointer arrives (`activeTouches.size >= 2`), immediately abort/cancel the in-progress single-touch stroke without leaving stray ink dots, and smoothly transition to two-finger pan/pinch-zoom.
+  - In `src/store/inkingStore.ts`:
+    - Add `inkWithTouch: boolean` state (default `false` for dedicated stylus/tablet mode with auto-detection).
+    - Add `setInkWithTouch(enabled: boolean)` action and persist preference in `localStorage`.
+- [x] **29.2 Dynamic Real-Time Pressure Sensitivity for Graphic Tablets:**
+  - Hardware Stylus Pressure Tracking:
+    - In `src/tools/PenTool.ts`:
+      - Extract `e.pressure` from W3C Pointer Events.
+      - Apply calibrated power curve: `p_norm = p > 0 ? Math.pow(p, 0.75) : 0.5`.
+      - Compute dynamic variable thickness: `width_i = baseWidth * (0.35 + 0.65 * p_norm)`.
+      - Store per-point pressure / width in `InkPoint` (`pressure: number`, `width?: number`).
+      - Apply smooth calligraphic tapering at stroke entry and exit (velocity & pressure easing).
+  - Variable-Width Stroke Rendering:
+    - In `src/canvas/CanvasEntities.tsx`:
+      - For strokes with variable pressure points, generate dynamic outline polygon geometry or variable-width stroke segments using the smooth Catmull-Rom sampled points, rendering fluid calligraphic lines on graphic tablets (Wacom, Apple Pencil, Surface Pen, S-Pen).
+      - Maintain full backward compatibility for static-width strokes and highlighter strokes.
+    - In `src/tools/ExportEngine.ts`:
+      - Ensure high-res PNG and PDF export accurately preserves variable-thickness pressure strokes.
+- [x] **29.3 Horizontally Scrollable Mobile Inking Ribbon & Popover Clamping:**
+  - In `src/components/toolbar/InkToolbar.tsx`:
+    - Mobile Responsive Layout:
+      - Constrain width on small screens: `max-width: calc(100vw - 24px)`.
+      - Make toolbar horizontally scrollable on mobile: `overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch;`.
+      - Add dynamic gradient edge masks (`mask-image: linear-gradient(...)`) indicating scrollability when content overflows.
+      - Ensure 44x44px touch targets compliant with mobile accessibility standards.
+  - In `src/components/toolbar/PenPopover.tsx`, `HighlighterPopover.tsx`, `EraserPopover.tsx`:
+    - Viewport Clamping:
+      - Calculate bounding rect dynamically: ensure popovers are clamped within `window.innerWidth` and `window.innerHeight` with a 12px margin, preventing swatches or sliders from clipping off-screen on phones.
+- [x] **29.4 Responsive TopBar, Create Flyout & HUD Collision Avoidance:**
+  - In `src/components/header/TopBar.tsx`:
+    - Screen width breakpoint (<640px):
+      - Truncate board title to fit small screens.
+      - Collapse secondary buttons (Settings, Theme, Export) into a compact Fluent mobile overflow menu (`...`).
+      - Hide non-essential labels while preserving icon touch buttons.
+  - In `src/components/hud/ZoomHUD.tsx`:
+    - Collision Avoidance:
+      - On screens <640px, reposition the ZoomHUD or elevate it above the bottom toolbar (`bottom: 80px` or top-right below TopBar), preventing the centered mobile toolbar from obscuring the zoom controls.
+  - In `src/components/create/CreateFlyout.tsx`:
+    - Mobile bottom sheet / responsive drawer styling:
+      - On phone screens (<640px), open as a slide-up bottom sheet with swipe-down dismissal instead of a fixed left sidebar that covers half the screen.
+- [x] **29.5 Automated Test Verification & Clean Production Build:**
+  - Create `scratch/test_milestone29_responsive_and_tablet.js` verifying:
+    1. Touch/Stylus pointer discrimination logic: stylus draws while touch pans when `inkWithTouch` is false.
+    2. Two-finger touch detection: transitions to pinch-zoom and cancels single-touch stroke without artifacts.
+    3. Pressure modulation formula: `p_norm = p^0.75` modulates stroke thickness across `[0.35 * base, base]`.
+    4. Viewport clamping helper: clamps popover coordinates within mobile viewport bounds.
+  - Run test suite with Node.js and verify `npm run build` succeeds with 0 TypeScript/lint errors.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `28.4 Automated Test Verification & Clean Production Build (Milestone 28 complete)`
-- **Current Active Sub-Task:** `Milestone 28 State Restored — Deployed to Vercel`
-- **Next Recommended Prompt:** `"Ready for next feature or milestone!"`
-
-
-
+- **Last Completed Sub-Task:** `29.5 Automated Test Verification & Clean Production Build (Milestone 29 complete)`
+- **Current Active Sub-Task:** `Milestone 29 Complete — Responsive Mobile UI & Graphic Tablet Inking Engine Verified`
+- **Next Recommended Prompt:** `"Push all changes or select next feature!"`

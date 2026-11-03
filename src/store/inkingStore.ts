@@ -113,9 +113,15 @@ export interface InkingState {
   isRulerActive: boolean;
   activePopover: InkingTool | null;
   clearCanvasSignal: number;
+  inkWithTouch: boolean;
 }
 
 // Default initial state according to Module 786285 / 578889: Select Tool is default on board entry!
+const storedInkWithTouch =
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem('openwhiteboard_ink_with_touch') === 'true'
+    : false;
+
 const initialInkingState: InkingState = {
   selectedTool: 'Select',
   lastSelectedPenSlot: 'Pen1',
@@ -173,6 +179,7 @@ const initialInkingState: InkingState = {
   isRulerActive: false,
   activePopover: null,
   clearCanvasSignal: 0,
+  inkWithTouch: storedInkWithTouch,
 };
 
 let currentState = initialInkingState;
@@ -333,6 +340,19 @@ export const inkingStore = {
       ...currentState,
       isRulerActive: active,
     };
+    emitChange();
+  },
+
+  setInkWithTouch: (enabled: boolean) => {
+    currentState = {
+      ...currentState,
+      inkWithTouch: enabled,
+    };
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('openwhiteboard_ink_with_touch', String(enabled));
+      }
+    } catch {}
     emitChange();
   },
 
