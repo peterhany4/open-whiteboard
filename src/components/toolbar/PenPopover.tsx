@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   inkingStore,
   useInkingStore,
@@ -25,25 +26,57 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
   const state = useInkingStore();
 
-  // Milestone 29.3: Viewport bounds clamping
-  const [shiftX, setShiftX] = React.useState(0);
-
-  React.useEffect(() => {
-    if (!popoverRef.current) return;
-    const rect = popoverRef.current.getBoundingClientRect();
-    const margin = 12;
-    let shift = 0;
-    if (rect.left < margin) {
-      shift = margin - rect.left;
-    } else if (rect.right > window.innerWidth - margin) {
-      shift = window.innerWidth - margin - rect.right;
-    }
-    setShiftX(shift);
-  }, []);
+  // Milestone 30.1: Dynamic anchor positioning & viewport bounds clamping
+  const [anchorPos, setAnchorPos] = useState<{ left: number; bottom: number } | null>(null);
+  const [shiftX, setShiftX] = useState(0);
 
   const isHighlighter = tool === 'Highlighter';
   const isLaser = tool === 'Laser';
   const isPen = !isHighlighter && !isLaser;
+
+  const updatePosition = useCallback(() => {
+    const toolId = `wb-tool-${tool.toLowerCase()}`;
+    const el = document.getElementById(toolId);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setAnchorPos({
+      left: rect.left + rect.width / 2,
+      bottom: window.innerHeight - rect.top + 14,
+    });
+  }, [tool]);
+
+  useEffect(() => {
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    const ribbonEl = document.getElementById('whiteboard-ink-toolbar');
+    if (ribbonEl) {
+      ribbonEl.addEventListener('scroll', updatePosition, { passive: true });
+    }
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      if (ribbonEl) {
+        ribbonEl.removeEventListener('scroll', updatePosition);
+      }
+    };
+  }, [updatePosition]);
+
+  useEffect(() => {
+    if (!popoverRef.current || !anchorPos) return;
+    const popoverWidth = popoverRef.current.offsetWidth || (isLaser ? 240 : 286);
+    const halfW = popoverWidth / 2;
+    const margin = 12;
+
+    const currentLeft = anchorPos.left - halfW;
+    const currentRight = anchorPos.left + halfW;
+
+    let shift = 0;
+    if (currentLeft < margin) {
+      shift = margin - currentLeft;
+    } else if (currentRight > window.innerWidth - margin) {
+      shift = window.innerWidth - margin - currentRight;
+    }
+    setShiftX(shift);
+  }, [anchorPos, isLaser]);
 
   const currentPenState = isPen ? state.pens[tool as PenSlot] : null;
   const currentThickness = isPen
@@ -65,9 +98,9 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
   useEffect(() => {
     function handlePointerDown(e: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        // Check if click was on the toolbar itself
-        const toolbarEl = document.getElementById('whiteboard-ink-toolbar');
-        if (toolbarEl && toolbarEl.contains(e.target as Node)) {
+        // Check if click was on the tool button itself
+        const toolBtn = document.getElementById(`wb-tool-${tool.toLowerCase()}`);
+        if (toolBtn && toolBtn.contains(e.target as Node)) {
           return;
         }
         onClose();
@@ -84,7 +117,7 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [tool, onClose]);
 
   const thicknesses = isHighlighter
     ? HIGHLIGHTER_THICKNESSES
@@ -124,14 +157,14 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
     }
   };
 
-  return (
+  return createPortal(
     <div
       ref={popoverRef}
       className="wb-pen-popover"
       style={{
-        position: 'absolute',
-        bottom: 'calc(100% + 14px)',
-        left: '50%',
+        position: 'fixed',
+        bottom: `${anchorPos?.bottom ?? 80}px`,
+        left: `${anchorPos?.left ?? (typeof window !== 'undefined' ? window.innerWidth / 2 : 200)}px`,
         transform: `translateX(calc(-50% + ${shiftX}px))`,
         width: isLaser ? '240px' : '286px',
         padding: '14px',
@@ -492,6 +525,7 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
           </div>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };

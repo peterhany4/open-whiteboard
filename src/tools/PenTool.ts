@@ -599,7 +599,7 @@ export class PenToolEngine {
       d += ` L ${leftPts[i].x.toFixed(2)} ${leftPts[i].y.toFixed(2)}`;
     }
 
-    const endHalfW = (points[points.length - 1].width || defaultWidth) / 2;
+    const endHalfW = Math.max(0.5, (points[points.length - 1].width || defaultWidth) / 2);
     const lastRight = rightPts[rightPts.length - 1];
     d += ` A ${endHalfW.toFixed(2)} ${endHalfW.toFixed(2)} 0 0 1 ${lastRight.x.toFixed(2)} ${lastRight.y.toFixed(2)}`;
 
@@ -607,7 +607,7 @@ export class PenToolEngine {
       d += ` L ${rightPts[i].x.toFixed(2)} ${rightPts[i].y.toFixed(2)}`;
     }
 
-    const startHalfW = (points[0].width || defaultWidth) / 2;
+    const startHalfW = Math.max(0.5, (points[0].width || defaultWidth) / 2);
     const firstLeft = leftPts[0];
     d += ` A ${startHalfW.toFixed(2)} ${startHalfW.toFixed(2)} 0 0 1 ${firstLeft.x.toFixed(2)} ${firstLeft.y.toFixed(2)}`;
     d += ' Z';

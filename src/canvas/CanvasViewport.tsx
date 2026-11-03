@@ -166,11 +166,19 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       }
     }
 
+    function handleBlur() {
+      isPenActiveRef.current = false;
+      activeTouchPointersRef.current.clear();
+      touchStateRef.current = null;
+    }
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
 
@@ -548,6 +556,20 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
 
   // 4. Pointer Handlers (Panning & Inking Tools: Select, Hand, Pen, Highlighter, Laser, Eraser)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // If an editable input is active, blur it when clicking the canvas
+    if (
+      document.activeElement &&
+      document.activeElement instanceof HTMLElement &&
+      (document.activeElement.tagName === 'INPUT' ||
+        document.activeElement.tagName === 'TEXTAREA' ||
+        document.activeElement.isContentEditable)
+    ) {
+      const targetEl = e.target as HTMLElement;
+      if (!targetEl.closest('input, textarea, [contenteditable="true"]')) {
+        document.activeElement.blur();
+      }
+    }
+
     const activeTool = inkingStore.getState().selectedTool;
     const target = e.target as HTMLElement;
 
@@ -1026,6 +1048,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerLeave = () => {
+    isPenActiveRef.current = false;
     setIsHoveringCanvas(false);
     setHoverPoint(null);
     if (!isMiddleClickErasingRef.current) {

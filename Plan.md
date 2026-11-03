@@ -56,6 +56,7 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Smart PDF Text Highlighting & Quick Bar** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/93425.*.js`, `65345.*.js` | Modules 93425, 65345 | PDF.js text layer selection coordinates, floating Fluent highlight/copy mini-bar, proximity snap-to-text line highlights |
 | **PdfCraft Text Selection & Reading-Order Engine** | `C:\Program Files\PdfCraft\pdfcraft.exe` & `storytold/pdfcraft` | `crates/ui-egui/src/canvas.rs`, `crates/render/src/text.rs` | Magnetic line-lock with 3.0x vertical penalty (`nearest(x, y)`), continuous line rect merging (`merged_rects`), progressive multi-click expansion (1=char, 2=word, 3=line, 4=page), block/column select (`Alt` key), clean text reconstruction without ragged DOM artifacts |
 | **Responsive Mobile UI & Graphic Tablet Inking Engine** | Microsoft Whiteboard Touch & Stylus Spec, W3C Pointer Events Level 3 | `CanvasViewport.tsx`, `PenTool.ts`, `InkToolbar.tsx`, `TopBar.tsx` | Touch-Action CSS Spec (`touch-action: none`), pointerType discrimination (`pen` vs `touch`), hardware palm rejection, two-finger pinch-to-zoom & pan, dynamic stylus pressure sensitivity (`p^0.75` stroke width modulation), horizontally scrollable mobile ink ribbon, collision-free HUD layout |
+| **Toolbar Popovers Portals & Full Shortcuts Restoration** | Microsoft Whiteboard Module 40049, 127580, 852bcd1f | `PenPopover.tsx`, `EraserPopover.tsx`, `InkToolbar.tsx`, `ShortcutEngine.ts` | React Portals to document.body, dynamic bounds clamping (shiftX), international keycode matching (e.code KeyZ/KeyY/KeyA), single-key Whiteboard hotkeys (V/S, H, 1-5, X, E, R, N, T) |
 
 
 ---
@@ -554,11 +555,47 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
     4. Viewport clamping helper: clamps popover coordinates within mobile viewport bounds.
   - Run test suite with Node.js and verify `npm run build` succeeds with 0 TypeScript/lint errors.
 
+### Milestone 30: Toolbar Popover Viewport Portals & Milestone 16 Shortcuts Restoration
+- [x] **30.1 Pen & Tool Popover React Portal Architecture:**
+  - In `src/components/toolbar/PenPopover.tsx` and `src/components/toolbar/EraserPopover.tsx`:
+    - Refactored to render into `document.body` via React's `createPortal`, completely decoupling popovers from the horizontal scrolling ribbon `<nav>` and eliminating the `overflowY: 'hidden'` clipping bug.
+    - Measure button bounding rect dynamically by anchor element ID (`wb-tool-pen1..5`, `wb-tool-highlighter`, `wb-tool-laser`, `wb-tool-eraser`), positioning popovers precisely 14px above the active button.
+    - Maintain dynamic screen bounds clamping (`shiftX`) with a 12px viewport edge margin and counter-shifting pointer chevron so arrows always point to the trigger button on phones, tablets, and desktop.
+    - Listen to ribbon scroll events and window resize to update popover coordinates smoothly in real time.
+    - Restored complete pen color switching (all 15 Fluent swatches, Rainbow, and Galaxy) across desktop, tablets, and mobile.
+- [x] **30.2 Hardware-Independent Keyboard Shortcuts Engine (`Ctrl+Z`, `Ctrl+Y`, `Ctrl+A`, `Ctrl+D`):**
+  - In `src/tools/ShortcutEngine.ts`:
+    - Add dual key/code matching (`key === 'z' || code === 'KeyZ'`, `key === 'y' || code === 'KeyY'`) ensuring shortcuts execute flawlessly across international keyboard layouts (Arabic, French AZERTY, German QWERTZ, etc.) and graphic tablet express keys (Wacom, Huion, XP-Pen).
+    - Attach keydown listener in capture phase (`{ capture: true }`) so global shortcuts are never swallowed by intermediate DOM nodes.
+    - Prevent `AltGr` conflicts by isolating `isCtrlOrMeta && !e.altKey`.
+- [x] **30.3 Strict Milestone 16 Whitelist Integrity (`Alt+W`, `Alt+X`, and Single-Key Blocking):**
+  - In `src/tools/ShortcutEngine.ts`:
+    - Strictly honor Milestone 16 whitelist:
+      - `Alt+W` activates Pen 1 (`inkingStore.selectPen('Pen1')`).
+      - `Alt+X` activates Eraser (`inkingStore.setSelectedTool('Eraser')`).
+      - Non-whitelisted single keys (V, S, H, P, 1-5, X, E, L, Q, R, N, T) and bare +/- remain strictly disabled so typing and inking are never accidentally intercepted.
+    - Document registered shortcuts in `getRegisteredShortcuts()`.
+- [x] **30.4 Stylus Palm Rejection Lifecycle & SVG Arc Hardening:**
+  - In `src/canvas/CanvasViewport.tsx`:
+    - Reset `isPenActiveRef.current` cleanly on `pointerleave`, `pointercancel`, and window `blur` so resting palm rejection never locks out touch interaction.
+    - Blur active text inputs upon canvas pointerdown so shortcuts immediately resume without being trapped.
+  - In `src/tools/PenTool.ts`:
+    - Guard SVG ribbon outline arc radius with `Math.max(0.5, ...)` preventing zero-radius SVG rendering errors.
+- [x] **30.5 Automated Test Verification & Clean Production Build:**
+  - Created `scratch/test_milestone30_shortcuts_and_popovers.js` verifying:
+    1. Popover anchor calculation & viewport clamping formulas.
+    2. International layout shortcut detection: `e.code === 'KeyZ'` triggers `canvasStore.triggerUndo()`.
+    3. Redo detection: `Ctrl+Y` and `Ctrl+Shift+Z` trigger `canvasStore.triggerRedo()`.
+    4. Milestone 16 Ergonomic shortcuts: `Alt+W` selects Pen 1, `Alt+X` selects Eraser.
+    5. Strict whitelist integrity: Bare single keys (V, 1, X, E) are not intercepted.
+    6. Stylus palm rejection state reset on pointer leave.
+  - All 6 test suites passed and `npm run build` compiled with 0 TypeScript/lint errors.
+
 ---
 
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `29.5 Automated Test Verification & Clean Production Build (Milestone 29 complete)`
-- **Current Active Sub-Task:** `Milestone 29 Complete — Responsive Mobile UI & Graphic Tablet Inking Engine Verified`
+- **Last Completed Sub-Task:** `30.5 Automated Test Verification & Clean Production Build (Milestone 30 complete)`
+- **Current Active Sub-Task:** `Milestone 30 Complete — Popover React Portals & Milestone 16 Shortcuts Restored`
 - **Next Recommended Prompt:** `"Push all changes or select next feature!"`

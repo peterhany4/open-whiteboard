@@ -4,9 +4,10 @@
  * Reverse-Engineered from REA Evidence:
  * - Evidence ID: ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de
  * - Source Modules:
- *   - Module 852bcd1f & 179019: Inking & Navigation Hotkeys (V/S, H, P/1-5, X, E, L/Q, R)
- *   - Module 517955 & 84781932: Object manipulation (N, T, Delete, Backspace, Ctrl+D, Ctrl+A, Esc)
- *   - Module 415906: Canvas navigation (Ctrl+0, Ctrl++, Ctrl+-, +, -)
+ *   - Milestone 16 Strict Shortcut Whitelist (Alt+W for Pen 1, Alt+X for Eraser)
+ *   - Module 517955 & 84781932: Object manipulation (Delete, Backspace, Ctrl+D, Ctrl+A, Esc, Ctrl+L, Ctrl+[/])
+ *   - Module 415906: Canvas navigation (Ctrl++, Ctrl+-)
+ *   - Module 127580: Command History (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
  */
 
 import { inkingStore } from '../store/inkingStore';
@@ -38,9 +39,9 @@ export class ShortcutEngine {
   }
 
   private handleKeyDown = (e: KeyboardEvent) => {
-    // 1. Text input isolation: typing in sticky notes, title, or text boxes must not trigger single-key tool switches or deletion
+    // 1. Text input isolation: typing in sticky notes, title, or text boxes must not trigger shortcut actions or deletion
     if (this.isTextInput(e.target)) {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || e.code === 'Escape') {
         (e.target as HTMLElement).blur();
       }
       return;
@@ -52,34 +53,37 @@ export class ShortcutEngine {
     }
 
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    const code = e.code;
 
-    // 3. Modifier-based shortcuts (Ctrl / Cmd)
-    if (isCtrlOrMeta) {
-      const key = e.key.toLowerCase();
+    // 3. Modifier-based shortcuts (Ctrl / Cmd) — Dual key & code checking for international layouts
+    if (isCtrlOrMeta && !e.altKey) {
+      const isZ = key === 'z' || code === 'KeyZ';
+      const isY = key === 'y' || code === 'KeyY';
 
       // Undo: Ctrl+Z (without Shift)
-      if (key === 'z' && !e.shiftKey) {
+      if (isZ && !e.shiftKey) {
         e.preventDefault();
         canvasStore.triggerUndo();
         return;
       }
 
       // Redo: Ctrl+Y or Ctrl+Shift+Z
-      if (key === 'y' || (key === 'z' && e.shiftKey)) {
+      if (isY || (isZ && e.shiftKey)) {
         e.preventDefault();
         canvasStore.triggerRedo();
         return;
       }
 
       // Select All: Ctrl+A
-      if (key === 'a') {
+      if (key === 'a' || code === 'KeyA') {
         e.preventDefault();
         selectionStore.selectAll();
         return;
       }
 
       // Duplicate: Ctrl+D
-      if (key === 'd') {
+      if (key === 'd' || code === 'KeyD') {
         if (selectionStore.getSelectedCount() > 0) {
           e.preventDefault();
           selectionStore.duplicateSelected();
@@ -88,21 +92,21 @@ export class ShortcutEngine {
       }
 
       // Zoom In: Ctrl++ or Ctrl+=
-      if (e.key === '=' || e.key === '+') {
+      if (key === '=' || key === '+' || code === 'Equal' || code === 'NumpadAdd') {
         e.preventDefault();
         canvasStore.zoomIn();
         return;
       }
 
       // Zoom Out: Ctrl+- or Ctrl+_
-      if (e.key === '-' || e.key === '_') {
+      if (key === '-' || key === '_' || code === 'Minus' || code === 'NumpadSubtract') {
         e.preventDefault();
         canvasStore.zoomOut();
         return;
       }
 
       // Bring to Front: Ctrl+] or Ctrl+Shift+] / Ctrl+}
-      if (e.key === ']' || e.key === '}') {
+      if (key === ']' || key === '}' || code === 'BracketRight') {
         const ids = Array.from(selectionStore.getSelectedIds());
         if (ids.length > 0) {
           e.preventDefault();
@@ -112,7 +116,7 @@ export class ShortcutEngine {
       }
 
       // Send to Back: Ctrl+[ or Ctrl+Shift+[ / Ctrl+{
-      if (e.key === '[' || e.key === '{') {
+      if (key === '[' || key === '{' || code === 'BracketLeft') {
         const ids = Array.from(selectionStore.getSelectedIds());
         if (ids.length > 0) {
           e.preventDefault();
@@ -122,7 +126,7 @@ export class ShortcutEngine {
       }
 
       // Toggle Lock / Unlock: Ctrl+L
-      if (e.key === 'l' || e.key === 'L') {
+      if (key === 'l' || code === 'KeyL') {
         const selected = selectionStore.getSelectedEntities();
         if (selected.length > 0) {
           e.preventDefault();
@@ -163,15 +167,14 @@ export class ShortcutEngine {
       return;
     }
 
-    // 4. Ergonomic Alt-key shortcuts (Alt+W for Pen 1, Alt+X for Eraser)
-    if (e.altKey) {
-      const key = e.key.toLowerCase();
-      if (key === 'w' || e.code === 'KeyW') {
+    // 4. Milestone 16 Ergonomic Alt-key shortcuts (Alt+W for Pen 1, Alt+X for Eraser)
+    if (e.altKey && !isCtrlOrMeta) {
+      if (key === 'w' || code === 'KeyW') {
         e.preventDefault();
         inkingStore.selectPen('Pen1');
         return;
       }
-      if (key === 'x' || e.code === 'KeyX') {
+      if (key === 'x' || code === 'KeyX') {
         e.preventDefault();
         inkingStore.setSelectedTool('Eraser');
         return;
@@ -179,41 +182,29 @@ export class ShortcutEngine {
       return;
     }
 
-    // 5. Allowed Single-key shortcuts (Delete/Backspace, Escape)
-    const key = e.key.toLowerCase();
-
-    switch (key) {
-      // Deletion (Delete / Backspace)
-      case 'delete':
-      case 'backspace':
-        if (selectionStore.getSelectedCount() > 0) {
-          e.preventDefault();
-          selectionStore.deleteSelected();
-        }
-        break;
-
-      // Escape key behavior (Module 517955):
-      // 1. Close popover if open
-      // 2. Close create flyout / settings if open
-      // 3. Clear selection if objects selected
-      // 4. Return to Select Tool if in inking mode
-      case 'escape':
+    // 5. Milestone 16 Whitelisted Non-Modifier Keys (Delete/Backspace, Escape only)
+    if (key === 'delete' || key === 'backspace' || code === 'Delete' || code === 'Backspace') {
+      if (selectionStore.getSelectedCount() > 0) {
         e.preventDefault();
-        if (inkingStore.getState().activePopover !== null) {
-          inkingStore.closePopover();
-        } else if (canvasStore.getState().isCreatePanelOpen) {
-          canvasStore.closeCreatePanel();
-        } else if (canvasStore.getState().isSettingsOpen) {
-          canvasStore.closeSettings();
-        } else if (selectionStore.getSelectedCount() > 0) {
-          selectionStore.clearSelection();
-        } else if (inkingStore.getState().selectedTool !== 'Select') {
-          inkingStore.selectTool('Select');
-        }
-        break;
+        selectionStore.deleteSelected();
+      }
+      return;
+    }
 
-      default:
-        break;
+    if (key === 'escape' || code === 'Escape') {
+      e.preventDefault();
+      if (inkingStore.getState().activePopover !== null) {
+        inkingStore.closePopover();
+      } else if (canvasStore.getState().isCreatePanelOpen) {
+        canvasStore.closeCreatePanel();
+      } else if (canvasStore.getState().isSettingsOpen) {
+        canvasStore.closeSettings();
+      } else if (selectionStore.getSelectedCount() > 0) {
+        selectionStore.clearSelection();
+      } else if (inkingStore.getState().selectedTool !== 'Select') {
+        inkingStore.selectTool('Select');
+      }
+      return;
     }
   };
 
@@ -227,20 +218,22 @@ export class ShortcutEngine {
       { key: 'Ctrl+D', description: 'Duplicate Selected Objects', badge: 'Ctrl+D' },
       { key: 'Delete / Backspace', description: 'Delete Selected Objects', badge: 'Del' },
       { key: 'Ctrl+A', description: 'Select All Objects', badge: 'Ctrl+A' },
-      { key: 'Escape', description: 'Clear Selection / Return to Select Tool', badge: 'Esc' },
+      { key: 'Ctrl+L', description: 'Lock / Unlock Selected Objects', badge: 'Ctrl+L' },
+      { key: 'Ctrl+[ / ]', description: 'Send to Back / Bring to Front', badge: 'Ctrl+[/]' },
+      { key: 'Escape', description: 'Clear Selection / Close Popover', badge: 'Esc' },
     ];
   }
 
   public start() {
     if (this.isListening) return;
     this.isListening = true;
-    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keydown', this.handleKeyDown, { capture: true });
   }
 
   public stop() {
     if (!this.isListening) return;
     this.isListening = false;
-    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keydown', this.handleKeyDown, { capture: true });
   }
 }
 
