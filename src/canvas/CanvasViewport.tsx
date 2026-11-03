@@ -726,7 +726,6 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const isPen = e.pointerType === 'pen';
     const isTouch = e.pointerType === 'touch';
 
     // Hardware Palm Rejection: Discard touch movements when pen is active
