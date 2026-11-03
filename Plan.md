@@ -4,20 +4,23 @@
 You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. Your mission is to reverse-engineer and build a pixel-accurate, full-featured local clone of **Microsoft Whiteboard** (including exact UI/UX, original SVG icons, Dark Mode, all inking/canvas tools, and local Image/PDF annotation).
 
 **CRITICAL RULES FOR EVERY SESSION:**
-1. **User-Mandated Development Lifecycle & Permission Gate (STRICT ENFORCEMENT):**
-   - **Rule A (Zero Unsolicited Implementation):** NEVER implement or modify code without explicit, written permission from the user.
-   - **Step 1 (Milestone Definition):** Propose or write the new milestone and its sub-tasks directly in `Plan.md`.
-   - **Step 2 (User Evaluation):** Stop and wait for the user to read, review, and evaluate the proposed milestone in `Plan.md`.
-   - **Step 3 (Prompt Generation):** When the user approves and specifies which milestone to proceed with, generate a complete, self-contained implementation prompt for that milestone. Always include GitHub commit and push as the standard final step (unless the user explicitly states otherwise).
-   - **Step 4 (User Prompt Review):** Stop and wait for the user to evaluate and approve the prompt.
-   - **Step 5 (Execution):** Only start implementing code after the user sends the prompt back or explicitly commands execution.
-2. **Read Persistent Memory First:** Always read **Section 2 (REA Evidence Registry)** and **Section 4 (Session Handoff Tracker)** before calling any tools. If `ROOT_EVIDENCE_ID` or a local `--snapshot` / `--evidence-bundle` already exists in Section 2, **DO NOT** re-run `analyze_javascript_application` on the entire bundle folder. Query the cached evidence using `inspect_analysis_view`.
-3. **One Micro-Task at a Time:** To protect context limits and token quotas, execute **ONLY ONE sub-task checkbox (`[ ]`)** per turn unless explicitly instructed otherwise.
-4. **Mandatory 3-Step Loop (`Inspect -> Trace -> Recreate`):**
+
+### Part A: User-Mandated Development Lifecycle & Permission Gate (STRICT ENFORCEMENT)
+- **Zero Unsolicited Implementation:** NEVER implement or modify code without explicit, written permission from the user.
+- **Step 1 (Milestone Definition):** Propose or write the new milestone and its sub-tasks directly in `Plan.md`.
+- **Step 2 (User Evaluation):** Stop and wait for the user to read, review, and evaluate the proposed milestone in `Plan.md`.
+- **Step 3 (Prompt Generation):** When the user approves and specifies which milestone to proceed with, generate a complete, self-contained implementation prompt for that milestone. Always include GitHub commit and push as the standard final step (unless the user explicitly states otherwise).
+- **Step 4 (User Prompt Review):** Stop and wait for the user to evaluate and approve the prompt.
+- **Step 5 (Execution):** Only start implementing code after the user sends the prompt back or explicitly commands execution.
+
+### Part B: Persistent Memory, Token Quota & REA Reverse-Engineering Protocol
+1. **Read Persistent Memory First:** Always read **Section 2 (REA Evidence Registry)** and **Section 4 (Session Handoff Tracker)** before calling any tools. If `ROOT_EVIDENCE_ID` or a local `--snapshot` / `--evidence-bundle` already exists in Section 2, **DO NOT** re-run `analyze_javascript_application` on the entire bundle folder. Query the cached evidence using `inspect_analysis_view`.
+2. **One Micro-Task at a Time:** To protect context limits and token quotas, execute **ONLY ONE sub-task checkbox (`[ ]`)** per turn unless explicitly instructed otherwise.
+3. **Mandatory 3-Step Loop (`Inspect -> Trace -> Recreate`):**
    - **Step A (Inspect & Trace):** Use REA (`search`, `inspect_analysis_view`, `trace_javascript_semantics`, or passive CDP) to locate the exact CSS tokens, SVG paths, or algorithm for the active micro-task. Record the Evidence ID and file/line ranges in Section 2.
    - **Step B (Recreate):** Implement the clean TypeScript/React module in `src/` matching the verified evidence.
    - **Step C (Checkpoint Update):** Mark the task `[x]` in Section 3, update Section 4 with the next task ID, and stop for user review.
-5. **Never Dump Raw Minified Bundles:** Never read raw multi-megabyte `.js` bundles directly into chat context. Always use REA's bounded pagination (`inspect_analysis_view` with `retained-evidence`).
+4. **Never Dump Raw Minified Bundles:** Never read raw multi-megabyte `.js` bundles directly into chat context. Always use REA's bounded pagination (`inspect_analysis_view` with `retained-evidence`).
 
 ---
 
