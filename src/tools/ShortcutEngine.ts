@@ -16,6 +16,7 @@ import { selectionStore } from '../store/selectionStore';
 import { sceneStore } from '../store/sceneStore';
 import { boardStore } from '../store/boardStore';
 import { historyManager } from '../canvas/history';
+import { copySelectedToClipboard } from './clipboard';
 
 export interface ShortcutDefinition {
   key: string;
@@ -87,6 +88,21 @@ export class ShortcutEngine {
         if (selectionStore.getSelectedCount() > 0) {
           e.preventDefault();
           selectionStore.duplicateSelected();
+        }
+        return;
+      }
+
+      // Copy: Ctrl+C
+      if (key === 'c' || code === 'KeyC') {
+        const domSelection = window.getSelection();
+        if (domSelection && domSelection.toString().length > 0) {
+          // Native text selection on page takes precedence
+          return;
+        }
+
+        if (selectionStore.getSelectedCount() > 0) {
+          e.preventDefault();
+          copySelectedToClipboard();
         }
         return;
       }
@@ -215,6 +231,8 @@ export class ShortcutEngine {
       { key: 'Ctrl + +', description: 'Zoom In', badge: 'Ctrl++' },
       { key: 'Ctrl + -', description: 'Zoom Out', badge: 'Ctrl+-' },
       { key: 'Ctrl+Z / Ctrl+Y', description: 'Undo / Redo', badge: 'Ctrl+Z/Y' },
+      { key: 'Ctrl+C', description: 'Copy Selected Objects', badge: 'Ctrl+C' },
+      { key: 'Ctrl+V', description: 'Paste Objects or Images', badge: 'Ctrl+V' },
       { key: 'Ctrl+D', description: 'Duplicate Selected Objects', badge: 'Ctrl+D' },
       { key: 'Delete / Backspace', description: 'Delete Selected Objects', badge: 'Del' },
       { key: 'Ctrl+A', description: 'Select All Objects', badge: 'Ctrl+A' },

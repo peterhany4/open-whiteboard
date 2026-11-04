@@ -67,6 +67,10 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **PdfCraft Text Selection & Reading-Order Engine** | `C:\Program Files\PdfCraft\pdfcraft.exe` & `storytold/pdfcraft` | `crates/ui-egui/src/canvas.rs`, `crates/render/src/text.rs` | Magnetic line-lock with 3.0x vertical penalty (`nearest(x, y)`), continuous line rect merging (`merged_rects`), progressive multi-click expansion (1=char, 2=word, 3=line, 4=page), block/column select (`Alt` key), clean text reconstruction without ragged DOM artifacts |
 | **Responsive Mobile UI & Graphic Tablet Inking Engine** | Microsoft Whiteboard Touch & Stylus Spec, W3C Pointer Events Level 3 | `CanvasViewport.tsx`, `PenTool.ts`, `InkToolbar.tsx`, `TopBar.tsx` | Touch-Action CSS Spec (`touch-action: none`), pointerType discrimination (`pen` vs `touch`), hardware palm rejection, two-finger pinch-to-zoom & pan, dynamic stylus pressure sensitivity (`p^0.75` stroke width modulation), horizontally scrollable mobile ink ribbon, collision-free HUD layout |
 | **Toolbar Popovers Portals & Milestone 16 Shortcuts Restoration** | Microsoft Whiteboard Module 40049, 127580, 852bcd1f | `PenPopover.tsx`, `EraserPopover.tsx`, `InkToolbar.tsx`, `ShortcutEngine.ts` | React Portals to document.body, dynamic bounds clamping (shiftX), international keycode matching (e.code KeyZ/KeyY/KeyA), Alt+W (Pen 1) & Alt+X (Eraser), strict blocking of single-key shortcuts |
+| **Universal Canvas Object Copy & Paste Engine** | Module 517955 & 84781932, W3C Async Clipboard API | `ShortcutEngine.ts`, `CanvasViewport.tsx`, `SelectionOverlay.tsx`, `selectionStore.ts` | Universal JSON entity clipboard serialization (`Ctrl+C`), spatial offset paste (`Ctrl+V`), atomic undoable duplicate/paste command groups, input isolation |
+| **Galaxy & Rainbow Inking Robustness & Pattern Shading** | Module 133066, 4101 (`effectFile`, `userSpaceOnUse`, `fallbackColor`) | `CanvasEntities.tsx`, `CanvasViewport.tsx`, `PenTool.ts` | Persistent SVG defs, `userSpaceOnUse` gradient/pattern units eliminating 0-width vertical stroke invisibility, authentic fallback colors, translation color preservation |
+| **Ink-to-Shape Precision Engine & Rounded Fillet Corners** | Module 40049 (`AddBeautifiedInk`, `WetShapeRecognitionHappened`) | `ShapeRecognitionEngine.ts`, `PenTool.ts` | Circle-first classification priority, removal of circle-hijacking rectangle heuristics, smooth circular corner fillet generation (`rx, ry` rounded heads) |
+| **Microsoft Whiteboard Inking & Bezier Restoration** | Module 834265, 170887, 805859, 726577 | `PenTool.ts`, `CanvasEntities.tsx`, `CanvasViewport.tsx` | Pure Catmull-Rom cubic Bezier splines (C1 = P1 + (P2-P0)/6, C2 = P2 - (P3-P1)/6), elimination of jagged linear outline regression from Milestone 29, clean mouse/standard pen uniform width preservation, smooth Bezier pressure dynamics |
 
 
 ---
@@ -603,9 +607,74 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 31: Universal Canvas Object Copy & Paste Engine (`Ctrl+C` / `Ctrl+V`)
+- [x] **31.1 Universal Canvas Object Serialization & Clipboard Copy (`Ctrl+C`):**
+  - Implement canvas object clipboard serializer supporting all entity types (`stroke`, `note`, `noteGrid`, `text`, `shape`, `reaction`, `image`, `pdf_document`).
+  - Wire `Ctrl+C` / `Cmd+C` in `src/tools/ShortcutEngine.ts` when canvas objects are selected, strictly isolating text inputs (typing in note/text/PDF text selection preserves native text copy).
+  - Write serialized JSON to system clipboard (`navigator.clipboard.writeText`) with format metadata and fallback internal clipboard cache.
+  - Add "Copy (Ctrl+C)" button to the selection context bar (`#wb-context-copy`) in `src/components/canvas/SelectionOverlay.tsx`.
+- [x] **31.2 Clipboard Deserialization, Spatial Offset & Paste Engine (`Ctrl+V`):**
+  - Extend paste handler in `src/canvas/CanvasViewport.tsx` to detect whiteboard JSON payload in clipboard data.
+  - Deserialize entities, generate fresh UUIDs, apply standard duplicate offset (+24px, +24px) or cursor-centered positioning.
+  - Group additions into a single atomic undoable command (`historyManager.inUndoGroup('Paste Objects')`).
+  - Add to `sceneStore` and automatically select newly pasted entities (`selectionStore.selectMultiple(newIds)`).
+- [x] **31.3 Automated Test Verification & Clean Production Build:**
+  - Create test script `scratch/test_milestone31_copy_paste.js` verifying copy/paste serialization, offset math, ID regeneration, undo/redo integration, and input isolation.
+  - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
+
+---
+
+### Milestone 32: Galaxy & Rainbow Inking Robustness & Viewport Pattern Shading
+- [ ] **32.1 Root Cause Elimination: UserSpaceOnUse & Persistent Effect Pattern Shaders:**
+  - In `src/canvas/CanvasEntities.tsx` and `src/canvas/CanvasViewport.tsx`:
+    - Fix the SVG gradient clipping bug where vertical strokes (0px width in `objectBoundingBox`) or small dots turn completely invisible.
+    - Switch gradient / pattern definitions to `gradientUnits="userSpaceOnUse"` or SVG `<pattern>` (Module 133066 spec) with persistent `<defs>` in root SVG layers.
+    - Provide robust fallback stroke color (`#FF4E00` for Rainbow, `#AE198D` for Galaxy) so strokes always render reliably.
+- [ ] **32.2 Trajectory Alignment & Consistent Color Rendering During Translation:**
+  - Ensure galaxy and rainbow strokes maintain consistent, vibrant appearance during live drawing, selection, and translation dragging without sudden color jumps or distortion.
+  - Harmonize color picker popover to handle effect-based strokes cleanly without stripping or corrupting effect properties.
+- [ ] **32.3 Automated Test Verification & Clean Production Build:**
+  - Create test script `scratch/test_milestone32_galaxy_rainbow.js` verifying stroke visibility on vertical lines/dots, gradient units, and translation preservation.
+  - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
+
+---
+
+### Milestone 33: Ink-to-Shape Precision Engine (Circle vs Rectangle Discrimination & Rounded Heads)
+- [ ] **33.1 Circle / Ellipse Priority Classification & Rectangle Metric Hardening:**
+  - In `src/tools/ShapeRecognitionEngine.ts`:
+    - Reorder closed-stroke classification: evaluate Circle / Ellipse (`circularity >= 0.70 && rsd <= 0.16`) BEFORE 4-corner polygons.
+    - Remove overly permissive `circularity >= 0.6` condition from Rectangle / Square detection that was hijacking hand-drawn circles.
+    - Require true right-angle corner detection and low circularity for 4-corner polygons.
+- [ ] **33.2 Rounded Corner Fillets ("Heads") for Rectangles & Squares:**
+  - In `src/tools/ShapeRecognitionEngine.ts` (`generateBeautifiedPoints`):
+    - Eliminate duplicated corner points that caused Catmull-Rom spline loops/pinch knots ("weird heads").
+    - Generate smooth circular arc fillets at each corner with radius $r = \min(8, \min(\text{width}, \text{height}) \times 0.1)$.
+    - Sample intermediate arc points so Catmull-Rom smoothly curves around corners without knotting or sharp bulbous artifacts.
+- [ ] **33.3 Automated Test Verification & Clean Production Build:**
+  - Create test script `scratch/test_milestone33_shape_recognition.js` verifying circle classification on imperfect circles, rectangle corner angle checks, and rounded corner fillet geometry.
+  - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
+
+---
+
+### Milestone 34: Microsoft Whiteboard REA Inking & Bezier Spline Restoration (Undo Milestone 29 Regression)
+- [ ] **34.1 REA Deep-Dive on Target Inking Smoothing (Modules 834265, 170887, 805859):**
+  - Verify exact Microsoft Whiteboard cubic Bezier spline formulation ($C_1 = P_1 + \frac{P_2 - P_0}{6}$, $C_2 = P_2 - \frac{P_3 - P_1}{6}$).
+  - Restore pure Catmull-Rom Bezier spline paths as the primary rendering engine for all standard pen drawing with round caps and round joins (`strokeLinecap="round" strokeLinejoin="round"`).
+- [ ] **34.2 Eliminate Milestone 29 Jittery Linear Outline Regression & Unwanted Tapering:**
+  - Remove forced entry/exit width tapering on standard pen strokes that was triggering `hasVariation = true` across all mouse and default strokes.
+  - Remove the linear polyline ribbon generator (`L ${leftPts[i].x} ${leftPts[i].y}`) that replaced smooth Bezier curves with jagged straight lines.
+  - Ensure standard mouse and pen drawing renders with pristine uniform width and buttery-smooth curves identical to Microsoft Whiteboard.
+- [ ] **34.3 Smooth Bezier Variable Pressure for Graphic Tablets Only:**
+  - For true graphic tablet / stylus input (`e.pointerType === 'pen'` with variable pressure), interpolate variable width smoothly along the Bezier curve without breaking into jagged linear polyline segments.
+  - Maintain calligraphic elegance while ensuring standard mouse/stylus inking remains silky-smooth.
+- [ ] **34.4 Automated Test Verification & Clean Production Build:**
+  - Create test script `scratch/test_milestone34_bezier_inking.js` verifying smooth Catmull-Rom Bezier output, uniform width on mouse/standard pen strokes, absence of jagged linear polygons, and build passing with 0 errors.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `30.5 Automated Test Verification & Clean Production Build (Milestone 30 complete)`
-- **Current Active Sub-Task:** `Milestone 30 Complete — Standing by for user instructions for Milestone 31 definition`
-- **Next Recommended Prompt:** `"Propose Milestone 31 for [Feature/Bug] in Plan.md"`
+- **Last Completed Sub-Task:** `31.3 Automated Test Verification & Clean Production Build (Milestone 31 Complete)`
+- **Current Active Sub-Task:** `Milestone 31 Complete — Standing by for Git Commit & Push / Next Milestone selection`
+- **Next Recommended Prompt:** `"Proceed with Milestone 34: Microsoft Whiteboard REA Inking & Bezier Spline Restoration"`

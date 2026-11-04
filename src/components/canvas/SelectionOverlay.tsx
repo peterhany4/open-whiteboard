@@ -20,7 +20,8 @@ import { useCanvasStore } from '../../store/canvasStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { lassoTool } from '../../tools/LassoTool';
 import type { LiveLassoState } from '../../tools/LassoTool';
-import { DeleteIcon, LockIcon, UnlockIcon } from '../../assets/icons';
+import { DeleteIcon, LockIcon, UnlockIcon, CopyIcon } from '../../assets/icons';
+import { copySelectedToClipboard } from '../../tools/clipboard';
 
 // 15 Standard Fluent Inking / Object Swatches (Module 434554)
 const FLUENT_PALETTE = [
@@ -508,6 +509,10 @@ export const SelectionOverlay: React.FC = () => {
 
   const handleDuplicate = useCallback(() => {
     selectionStore.duplicateSelected();
+  }, []);
+
+  const handleCopy = useCallback(() => {
+    copySelectedToClipboard();
   }, []);
 
   const handleBringToFront = useCallback(() => {
@@ -1075,6 +1080,30 @@ export const SelectionOverlay: React.FC = () => {
                 <rect x="3" y="6" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
                 <path d="M7 3H15.5C16.3284 3 17 3.67157 17 4.5V13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
+            </button>
+
+            {/* 5. Copy (Ctrl+C) */}
+            <button
+              id="wb-context-copy"
+              className="wb-selection-action-btn"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={handleCopy}
+              title="Copy (Ctrl+C)"
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: 'transparent',
+                color: isDark ? '#FFFFFF' : '#1F1F1F',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              <CopyIcon size={18} />
             </button>
 
             {/* 5. Lock / Unlock */}

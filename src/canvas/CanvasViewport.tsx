@@ -28,6 +28,7 @@ import { historyManager } from './history';
 import * as pdfjsLib from 'pdfjs-dist';
 import { dataUrlToUint8Array } from '../components/canvas/PDFDocumentWidget';
 import { toastStore } from '../store/toastStore';
+import { parseClipboardPayload, pasteEntities, getClipboardEntities } from '../tools/clipboard';
 
 interface CanvasViewportProps {
   children?: React.ReactNode;
@@ -463,7 +464,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
     }
 
     // Clipboard Paste Listener (Ctrl+V / Paste)
-    function handlePaste(e: ClipboardEvent) {
+    async function handlePaste(e: ClipboardEvent) {
       const target = e.target as HTMLElement;
       if (
         target &&
@@ -472,73 +473,94 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
         return;
       }
 
+      // 1. Check for serialized whiteboard entities in clipboard data
+      const clipboardText = e.clipboardData?.getData('text/plain');
+      const payload = parseClipboardPayload(clipboardText || '');
+
+      if (payload && payload.entities && payload.entities.length > 0) {
+        e.preventDefault();
+        pasteEntities(payload.entities);
+        return;
+      }
+
+      // 2. Check for bitmap image files in clipboard
       const items = e.clipboardData?.items;
-      if (!items) return;
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.type.indexOf('image') !== -1) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            const rect = viewportRef.current?.getBoundingClientRect();
-            const screenCenter = {
-              x: rect ? rect.left + rect.width / 2 : window.innerWidth / 2,
-              y: rect ? rect.top + rect.height / 2 : window.innerHeight / 2,
-            };
-            const worldPt = screenToWorld(screenCenter, camera, rect);
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const dataUrl = event.target?.result as string;
-              const img = new Image();
-              img.onload = () => {
-                let w = img.naturalWidth || 360;
-                let h = img.naturalHeight || 270;
-                const maxDim = 480;
-                if (w > maxDim || h > maxDim) {
-                  if (w > h) {
-                    h = Math.round((h * maxDim) / w);
-                    w = maxDim;
-                  } else {
-                    w = Math.round((w * maxDim) / h);
-                    h = maxDim;
-                  }
-                }
-
-                const timestamp = Date.now();
-                const imageEntity: CanvasEntity = {
-                  id: `image_paste_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
-                  type: 'image',
-                  x: Math.round(worldPt.x - w / 2),
-                  y: Math.round(worldPt.y - h / 2),
-                  width: w,
-                  height: h,
-                  src: dataUrl,
-                  isLockedToBackground: false,
-                  isLocked: false,
-                  fileName: file.name || 'Pasted Image',
-                  zIndex: 100,
-                  bounds: {
-                    minX: Math.round(worldPt.x - w / 2),
-                    minY: Math.round(worldPt.y - h / 2),
-                    maxX: Math.round(worldPt.x + w / 2),
-                    maxY: Math.round(worldPt.y + h / 2),
-                  },
-                  createdAt: timestamp,
-                  updatedAt: timestamp,
-                };
-
-                historyManager.inUndoGroup('Paste Image', () => {
-                  sceneStore.addEntity(imageEntity, true);
-                });
-                selectionStore.select(imageEntity.id);
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.indexOf('image') !== -1) {
+            const file = item.getAsFile();
+            if (file) {
+              e.preventDefault();
+              const rect = viewportRef.current?.getBoundingClientRect();
+              const screenCenter = {
+                x: rect ? rect.left + rect.width / 2 : window.innerWidth / 2,
+                y: rect ? rect.top + rect.height / 2 : window.innerHeight / 2,
               };
-              img.src = dataUrl;
-            };
-            reader.readAsDataURL(file);
-            break;
+              const worldPt = screenToWorld(screenCenter, camera, rect);
+
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const dataUrl = event.target?.result as string;
+                const img = new Image();
+                img.onload = () => {
+                  let w = img.naturalWidth || 360;
+                  let h = img.naturalHeight || 270;
+                  const maxDim = 480;
+                  if (w > maxDim || h > maxDim) {
+                    if (w > h) {
+                      h = Math.round((h * maxDim) / w);
+                      w = maxDim;
+                    } else {
+                      w = Math.round((w * maxDim) / h);
+                      h = maxDim;
+                    }
+                  }
+
+                  const timestamp = Date.now();
+                  const imageEntity: CanvasEntity = {
+                    id: `image_paste_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
+                    type: 'image',
+                    x: Math.round(worldPt.x - w / 2),
+                    y: Math.round(worldPt.y - h / 2),
+                    width: w,
+                    height: h,
+                    src: dataUrl,
+                    isLockedToBackground: false,
+                    isLocked: false,
+                    fileName: file.name || 'Pasted Image',
+                    zIndex: 100,
+                    bounds: {
+                      minX: Math.round(worldPt.x - w / 2),
+                      minY: Math.round(worldPt.y - h / 2),
+                      maxX: Math.round(worldPt.x + w / 2),
+                      maxY: Math.round(worldPt.y + h / 2),
+                    },
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                  };
+
+                  historyManager.inUndoGroup('Paste Image', () => {
+                    sceneStore.addEntity(imageEntity, true);
+                  });
+                  selectionStore.select(imageEntity.id);
+                };
+                img.src = dataUrl;
+              };
+              reader.readAsDataURL(file);
+              return;
+            }
           }
+        }
+      }
+
+      // 3. Fallback: If no system text or image was found, check internal in-memory clipboard buffer
+      if (!clipboardText) {
+        const fallbackEntities = await getClipboardEntities();
+        if (fallbackEntities && fallbackEntities.length > 0) {
+          e.preventDefault();
+          pasteEntities(fallbackEntities);
+          return;
         }
       }
     }

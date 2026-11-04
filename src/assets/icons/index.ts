@@ -1,4 +1,4 @@
-﻿// Open Whiteboard Extracted Inline SVG Icons
+// Open Whiteboard Extracted Inline SVG Icons
 // Reverse-engineered from target bundles (91464, 3644, 16494, 45173)
 
 export * from './types';
@@ -49,4 +49,5 @@ export { UnlockIcon } from './UnlockIcon';
 export { ExportIcon } from './ExportIcon';
 export { SearchIcon } from './SearchIcon';
 export { DuplicateIcon } from './DuplicateIcon';
+export { CopyIcon } from './CopyIcon';
 export { EditIcon } from './EditIcon';
