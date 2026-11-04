@@ -171,24 +171,26 @@ export class ShapeRecognitionEngine {
     // Circle = 1.0, Square = ~0.785, Triangle = ~0.604
     const circularity = (4 * Math.PI * area) / (pathLength * pathLength);
 
-    // Compute radial variance from bounding box center
+    // Compute radial variance normalized to bounding box half-extents (ellipse coordinate space)
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
+    const halfW = width / 2 || 1;
+    const halfH = height / 2 || 1;
 
-    let totalR = 0;
-    const radii: number[] = [];
+    let totalNormR = 0;
+    const normRadii: number[] = [];
     for (const p of rawPoints) {
-      const r = Math.hypot(p.x - centerX, p.y - centerY);
-      radii.push(r);
-      totalR += r;
+      const nr = Math.hypot((p.x - centerX) / halfW, (p.y - centerY) / halfH);
+      normRadii.push(nr);
+      totalNormR += nr;
     }
-    const meanR = totalR / radii.length;
-    let varR = 0;
-    for (const r of radii) {
-      varR += (r - meanR) * (r - meanR);
+    const meanNormR = totalNormR / normRadii.length;
+    let varNormR = 0;
+    for (const nr of normRadii) {
+      varNormR += (nr - meanNormR) * (nr - meanNormR);
     }
-    const stdR = Math.sqrt(varR / radii.length);
-    const rsd = stdR / (meanR || 1); // Relative standard deviation
+    const stdNormR = Math.sqrt(varNormR / normRadii.length);
+    const normRsd = stdNormR / (meanNormR || 1); // Normalized relative standard deviation
 
     // Simplify contour using Ramer-Douglas-Peucker
     const closedPoints: Point2D[] = [...rawPoints.map((p) => ({ x: p.x, y: p.y }))];
@@ -202,7 +204,42 @@ export class ShapeRecognitionEngine {
 
     const aspectRatio = width / (height || 1);
 
-    // B1: Triangle (3 corners)
+    // B1: Circle / Ellipse (evaluated first so that hand-drawn circles with 4-5 RDP vertices are never hijacked as rectangles)
+    // Circles & ellipses have normalized radial standard deviation <= 0.08 and circularity >= 0.80.
+    // Rectangles & squares have normalized radial standard deviation >= 0.115 and circularity <= 0.785.
+    if (circularity >= 0.80 && normRsd <= 0.08) {
+      const isCircle = aspectRatio >= 0.8 && aspectRatio <= 1.25;
+      const size = Math.max(width, height);
+
+      if (isCircle) {
+        const sX = centerX - size / 2;
+        const sY = centerY - size / 2;
+        return {
+          recognized: true,
+          shapeType: 'circle',
+          bounds: { minX: sX, minY: sY, maxX: sX + size, maxY: sY + size },
+          confidence: Math.min(0.98, 0.88 + (circularity - 0.7) * 0.4),
+          width: size,
+          height: size,
+          x: sX,
+          y: sY,
+        };
+      } else {
+        // Ellipse
+        return {
+          recognized: true,
+          shapeType: 'circle',
+          bounds: { minX, minY, maxX, maxY },
+          confidence: Math.min(0.95, 0.85 + (circularity - 0.7) * 0.35),
+          width,
+          height,
+          x: minX,
+          y: minY,
+        };
+      }
+    }
+
+    // B2: Triangle (3 corners)
     if (cornerCount === 3 || (cornerCount === 4 && this.hasCollinearVertices(uniqueVertices))) {
       // Internal angle sum of triangle ≈ 180°
       const angles = this.computePolygonInternalAngles(uniqueVertices);
@@ -222,13 +259,13 @@ export class ShapeRecognitionEngine {
       }
     }
 
-    // B2: 4-Corner Polygons (Diamond, Rectangle, Square)
+    // B3: 4-Corner Polygons (Diamond, Rectangle, Square)
     if (cornerCount === 4 || cornerCount === 5) {
       const vertices = cornerCount === 5 ? this.reduceTo4Vertices(uniqueVertices) : uniqueVertices;
 
       if (vertices.length === 4) {
         const angles = this.computePolygonInternalAngles(vertices);
-        const isRightAngled = angles.every((ang) => Math.abs(ang - 90) <= 25);
+        const isRightAngled = angles.every((ang) => Math.abs(ang - 90) <= 22);
 
         // Check if vertices align near midpoints (Diamond) vs corners (Rectangle)
         const isDiamond = this.checkDiamondAlignment(vertices, minX, minY, maxX, maxY);
@@ -246,7 +283,8 @@ export class ShapeRecognitionEngine {
           };
         }
 
-        if (isRightAngled || circularity >= 0.6) {
+        // Strict right-angle rectangle check, requiring circularity < 0.85 to strictly exclude circular strokes
+        if (isRightAngled && circularity < 0.85) {
           const isSquare = aspectRatio >= 0.85 && aspectRatio <= 1.15;
           if (isSquare) {
             const size = Math.max(width, height);
@@ -275,39 +313,6 @@ export class ShapeRecognitionEngine {
             };
           }
         }
-      }
-    }
-
-    // B3: Circle / Ellipse (tested after corner-based polygons)
-    if (circularity >= 0.70 && rsd <= 0.16) {
-      const isCircle = aspectRatio >= 0.8 && aspectRatio <= 1.25;
-      const size = Math.max(width, height);
-
-      if (isCircle) {
-        const sX = centerX - size / 2;
-        const sY = centerY - size / 2;
-        return {
-          recognized: true,
-          shapeType: 'circle',
-          bounds: { minX: sX, minY: sY, maxX: sX + size, maxY: sY + size },
-          confidence: Math.min(0.98, 0.88 + (circularity - 0.7) * 0.4),
-          width: size,
-          height: size,
-          x: sX,
-          y: sY,
-        };
-      } else {
-        // Ellipse (ShapeWidget renders circle with width/height as ellipse)
-        return {
-          recognized: true,
-          shapeType: 'circle',
-          bounds: { minX, minY, maxX, maxY },
-          confidence: Math.min(0.95, 0.85 + (circularity - 0.7) * 0.35),
-          width,
-          height,
-          x: minX,
-          y: minY,
-        };
       }
     }
 
@@ -464,30 +469,61 @@ export class ShapeRecognitionEngine {
         });
       }
     } else if (shapeType === 'rectangle') {
+      // Small rounded corner fillet radius (4px to 10px, proportional to dimension)
+      const r = Math.max(3, Math.min(10, Math.min(width, height) * 0.08));
+
+      // 4 Corner Arcs (Quarter-Circles)
+      // 1. Top-Right: center (x + width - r, y + r), from -PI/2 to 0
+      // 2. Bottom-Right: center (x + width - r, y + height - r), from 0 to PI/2
+      // 3. Bottom-Left: center (x + r, y + height - r), from PI/2 to PI
+      // 4. Top-Left: center (x + r, y + r), from PI to 3*PI/2
       const corners = [
-        { x, y },
-        { x: x + width, y },
-        { x: x + width, y: y + height },
-        { x, y: y + height },
-        { x, y },
+        { cx: x + width - r, cy: y + r, startAngle: -Math.PI / 2, endAngle: 0 },
+        { cx: x + width - r, cy: y + height - r, startAngle: 0, endAngle: Math.PI / 2 },
+        { cx: x + r, cy: y + height - r, startAngle: Math.PI / 2, endAngle: Math.PI },
+        { cx: x + r, cy: y + r, startAngle: Math.PI, endAngle: (3 * Math.PI) / 2 },
       ];
-      for (let s = 0; s < 4; s++) {
-        const c1 = corners[s];
-        const c2 = corners[s + 1];
-        // Duplicate corner point for sharp Catmull-Rom tangent clamping
-        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
-        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
-        for (let i = 1; i < 4; i++) {
-          const t = i / 4;
+
+      const arcSteps = 4;
+      const edgeSteps = 4;
+
+      for (let c = 0; c < 4; c++) {
+        const corner = corners[c];
+
+        // 1. Fillet Arc points for this corner
+        for (let i = 0; i <= arcSteps; i++) {
+          const t = i / arcSteps;
+          const theta = corner.startAngle + t * (corner.endAngle - corner.startAngle);
           points.push({
-            x: parseFloat((c1.x + t * (c2.x - c1.x)).toFixed(2)),
-            y: parseFloat((c1.y + t * (c2.y - c1.y)).toFixed(2)),
+            x: parseFloat((corner.cx + r * Math.cos(theta)).toFixed(2)),
+            y: parseFloat((corner.cy + r * Math.sin(theta)).toFixed(2)),
+            pressure: 0.5,
+          });
+        }
+
+        // 2. Straight edge points connecting this corner arc to the next corner arc
+        const nextCorner = corners[(c + 1) % 4];
+        const edgeStart = {
+          x: corner.cx + r * Math.cos(corner.endAngle),
+          y: corner.cy + r * Math.sin(corner.endAngle),
+        };
+        const edgeEnd = {
+          x: nextCorner.cx + r * Math.cos(nextCorner.startAngle),
+          y: nextCorner.cy + r * Math.sin(nextCorner.startAngle),
+        };
+
+        for (let i = 1; i < edgeSteps; i++) {
+          const t = i / edgeSteps;
+          points.push({
+            x: parseFloat((edgeStart.x + t * (edgeEnd.x - edgeStart.x)).toFixed(2)),
+            y: parseFloat((edgeStart.y + t * (edgeEnd.y - edgeStart.y)).toFixed(2)),
             pressure: 0.5,
           });
         }
       }
-      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
-      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
+
+      // Close the loop cleanly at the start point
+      points.push({ ...points[0] });
     } else if (shapeType === 'triangle') {
       const corners = [
         { x: x + width / 2, y },
@@ -499,7 +535,6 @@ export class ShapeRecognitionEngine {
         const c1 = corners[s];
         const c2 = corners[s + 1];
         points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
-        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
         for (let i = 1; i < 4; i++) {
           const t = i / 4;
           points.push({
@@ -509,7 +544,6 @@ export class ShapeRecognitionEngine {
           });
         }
       }
-      points.push({ x: corners[3].x, y: corners[3].y, pressure: 0.5 });
       points.push({ x: corners[3].x, y: corners[3].y, pressure: 0.5 });
     } else if (shapeType === 'diamond') {
       const corners = [
@@ -523,7 +557,6 @@ export class ShapeRecognitionEngine {
         const c1 = corners[s];
         const c2 = corners[s + 1];
         points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
-        points.push({ x: c1.x, y: c1.y, pressure: 0.5 });
         for (let i = 1; i < 4; i++) {
           const t = i / 4;
           points.push({
@@ -533,7 +566,6 @@ export class ShapeRecognitionEngine {
           });
         }
       }
-      points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
       points.push({ x: corners[4].x, y: corners[4].y, pressure: 0.5 });
     } else if (shapeType === 'line') {
       const s = startPt || { x, y: y + height / 2 };
