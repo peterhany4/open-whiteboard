@@ -657,17 +657,17 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ---
 
 ### Milestone 34: Microsoft Whiteboard REA Inking & Bezier Spline Restoration (Undo Milestone 29 Regression)
-- [ ] **34.1 REA Deep-Dive on Target Inking Smoothing (Modules 834265, 170887, 805859):**
+- [x] **34.1 REA Deep-Dive on Target Inking Smoothing (Modules 834265, 170887, 805859):**
   - Verify exact Microsoft Whiteboard cubic Bezier spline formulation ($C_1 = P_1 + \frac{P_2 - P_0}{6}$, $C_2 = P_2 - \frac{P_3 - P_1}{6}$).
   - Restore pure Catmull-Rom Bezier spline paths as the primary rendering engine for all standard pen drawing with round caps and round joins (`strokeLinecap="round" strokeLinejoin="round"`).
-- [ ] **34.2 Eliminate Milestone 29 Jittery Linear Outline Regression & Unwanted Tapering:**
+- [x] **34.2 Eliminate Milestone 29 Jittery Linear Outline Regression & Unwanted Tapering:**
   - Remove forced entry/exit width tapering on standard pen strokes that was triggering `hasVariation = true` across all mouse and default strokes.
   - Remove the linear polyline ribbon generator (`L ${leftPts[i].x} ${leftPts[i].y}`) that replaced smooth Bezier curves with jagged straight lines.
   - Ensure standard mouse and pen drawing renders with pristine uniform width and buttery-smooth curves identical to Microsoft Whiteboard.
-- [ ] **34.3 Smooth Bezier Variable Pressure for Graphic Tablets Only:**
+- [x] **34.3 Smooth Bezier Variable Pressure for Graphic Tablets Only:**
   - For true graphic tablet / stylus input (`e.pointerType === 'pen'` with variable pressure), interpolate variable width smoothly along the Bezier curve without breaking into jagged linear polyline segments.
   - Maintain calligraphic elegance while ensuring standard mouse/stylus inking remains silky-smooth.
-- [ ] **34.4 Automated Test Verification & Clean Production Build:**
+- [x] **34.4 Automated Test Verification & Clean Production Build:**
   - Create test script `scratch/test_milestone34_bezier_inking.js` verifying smooth Catmull-Rom Bezier output, uniform width on mouse/standard pen strokes, absence of jagged linear polygons, and build passing with 0 errors.
 
 ---
@@ -675,6 +675,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `33.3 Automated Test Verification & Clean Production Build (Milestone 33 Complete)`
-- **Current Active Sub-Task:** `Milestone 33 Complete — Standing by for Git Commit & Push / Proceeding to Milestone 34`
-- **Next Recommended Prompt:** `"Proceed with Milestone 34: Microsoft Whiteboard REA Inking & Bezier Spline Restoration"`
+- **Last Completed Sub-Task:** `34.4 Automated Test Verification & Clean Production Build (Milestone 34 Complete)`
+- **Current Active Sub-Task:** `Milestone 34 Complete — Standing by for Next Direction / Milestone Selection`
+- **Next Recommended Prompt:** `"Standing by for next user request or feature milestone"`

@@ -59,6 +59,7 @@ export class PenToolEngine {
   private isDrawing = false;
   private strokeId = '';
   private currentSlot: string = 'Pen1';
+  private currentPointerType: string = 'mouse';
   private rawPoints: InkStrokePoint[] = [];
   private filteredPoints: InkStrokePoint[] = [];
 
@@ -102,6 +103,7 @@ export class PenToolEngine {
     if (e.button !== 0) return;
 
     this.isDrawing = true;
+    this.currentPointerType = e.pointerType || 'mouse';
     this.strokeId = `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     const activeInking = inkingStore.getState();
@@ -116,12 +118,18 @@ export class PenToolEngine {
     worldPt = snapResult.point;
     this.activeRulerEdge = snapResult.edge;
 
-    // Initial pressure calibration (Module 773625 resting pressure 0.5)
-    const initialPressure = e.pressure > 0 ? e.pressure : 0.5;
+    // Stylus vs Mouse / Touch discrimination (Milestone 34)
+    const isStylusPen = this.currentPointerType === 'pen';
+    const initialPressure = isStylusPen && e.pressure > 0 ? e.pressure : 0.5;
     const baseThickness = penConfig ? penConfig.thickness : 2;
-    const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, initialPressure)), 0.75);
-    // Tapered entry width
-    const startWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm) * 0.4).toFixed(2));
+
+    // For active graphic tablet stylus, calibrate entry width to pressure;
+    // for standard mouse/touch, maintain uniform baseThickness without artificial tapering
+    let startWidth = baseThickness;
+    if (isStylusPen && e.pressure > 0) {
+      const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, initialPressure)), 0.75);
+      startWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm)).toFixed(2));
+    }
 
     const startPoint: InkStrokePoint = {
       x: worldPt.x,
@@ -188,21 +196,20 @@ export class PenToolEngine {
         continue;
       }
 
-      // 2. Velocity-Adaptive Pressure calculation (when drawing with mouse or constant pressure)
-      const dt = Math.max(1, (ev.timeStamp || Date.now()) - (prevPt.time || Date.now()));
-      const dist = Math.hypot(worldPt.x - prevPt.x, worldPt.y - prevPt.y);
-      const velocity = dist / dt; // pixels per millisecond
+      // 2. Pressure & Width determination (Milestone 34: silky-smooth Microsoft Whiteboard inking)
+      let rawPressure = 0.5;
+      let computedWidth = baseThickness;
 
-      let rawPressure = ev.pressure;
-      if (rawPressure <= 0 || ev.pointerType === 'mouse') {
-        // Fast movement = thinner line; Slow movement = thicker line
-        const velocityFactor = Math.max(0.3, Math.min(1.4, 1.25 - velocity * 0.2));
-        rawPressure = 0.5 * velocityFactor;
+      if (this.currentPointerType === 'pen' && ev.pressure > 0) {
+        // Graphic tablet active stylus calibrated power curve: p_norm = p^0.75 (Milestone 29.2 & 34.3)
+        rawPressure = ev.pressure;
+        const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, rawPressure)), 0.75);
+        computedWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm)).toFixed(2));
+      } else {
+        // Standard mouse, touch, or non-pressure pointer: uniform calibrated base thickness
+        rawPressure = 0.5;
+        computedWidth = baseThickness;
       }
-
-      // Graphic tablet calibrated power curve: p_norm = p^0.75 (Milestone 29.2)
-      const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, rawPressure)), 0.75);
-      const computedWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm)).toFixed(2));
 
       const rawPt: InkStrokePoint = {
         x: worldPt.x,
@@ -251,27 +258,9 @@ export class PenToolEngine {
     const arrowMode = penConfig ? penConfig.arrowMode : 'NoArrow';
     const effect = penConfig?.effect;
 
-    // Build finalized points with entry and exit tapering (Milestone 29.2)
+    // Build finalized points (Milestone 34: no forced artificial tapering or linear degradation)
     const finalPoints = [...this.filteredPoints];
-    if (finalPoints.length >= 6) {
-      finalPoints[0].width = parseFloat(((finalPoints[0].width || baseThickness) * 0.35).toFixed(2));
-      finalPoints[1].width = parseFloat(((finalPoints[1].width || baseThickness) * 0.65).toFixed(2));
-      finalPoints[2].width = parseFloat(((finalPoints[2].width || baseThickness) * 0.85).toFixed(2));
-
-      const n = finalPoints.length;
-      finalPoints[n - 3].width = parseFloat(((finalPoints[n - 3].width || baseThickness) * 0.85).toFixed(2));
-      finalPoints[n - 2].width = parseFloat(((finalPoints[n - 2].width || baseThickness) * 0.65).toFixed(2));
-      finalPoints[n - 1].width = parseFloat(((finalPoints[n - 1].width || baseThickness) * 0.35).toFixed(2));
-    }
-
-    // Compute dynamic velocity / pressure width modulation
-    let totalPressure = 0;
-    for (const pt of finalPoints) {
-      totalPressure += pt.pressure ?? 0.5;
-    }
-    const avgPressure = finalPoints.length > 0 ? totalPressure / finalPoints.length : 0.5;
-    const modulatedWidth = parseFloat((baseThickness * (0.4 + 1.2 * avgPressure)).toFixed(2));
-    const finalWidth = Math.max(1, Math.min(baseThickness * 1.8, modulatedWidth));
+    const finalWidth = baseThickness;
 
     // Enhance Inked Shapes recognition (Milestone 17)
     // Converts recognized hand-drawn gestures into mathematically straightened beautified ink strokes
@@ -544,7 +533,33 @@ export class PenToolEngine {
     return this.calculateArrowHead(from, tip, thickness);
   }
   /**
-   * Generates dynamic variable-width outline ribbon geometry for pressure-sensitive graphic tablets (Milestone 29.2)
+   * Catmull-Rom to Cubic Bezier curve contour builder (Module 170887 & 834265)
+   * Formula:
+   *   C1 = P1 + (P2 - P0) / 6
+   *   C2 = P2 - (P3 - P1) / 6
+   */
+  private buildBezierContour(pts: Point[]): string {
+    if (pts.length < 2) return '';
+    let d = '';
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = i > 0 ? pts[i - 1] : pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
+
+      const c1x = p1.x + (p2.x - p0.x) / 6;
+      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6;
+      const c2y = p2.y - (p3.y - p1.y) / 6;
+
+      d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    }
+    return d;
+  }
+
+  /**
+   * Generates dynamic variable-width outline ribbon geometry for pressure-sensitive graphic tablets (Milestone 29.2 & 34.3)
+   * Contour edges are fitted with smooth Catmull-Rom cubic Bezier splines (Module 170887 & 834265), eliminating jagged linear polylines.
    */
   public generateStrokeOutline(points: InkStrokePoint[], defaultWidth: number): string {
     if (points.length < 2) {
@@ -555,12 +570,12 @@ export class PenToolEngine {
       return '';
     }
 
-    // Check if stroke exhibits variable width dynamics (> 0.3px delta)
+    // Check if stroke exhibits variable width dynamics (> 0.4px delta)
     let hasVariation = false;
     const firstW = points[0].width || defaultWidth;
     for (let i = 1; i < points.length; i++) {
       const w = points[i].width || defaultWidth;
-      if (Math.abs(w - firstW) > 0.3) {
+      if (Math.abs(w - firstW) > 0.4) {
         hasVariation = true;
         break;
       }
@@ -593,19 +608,16 @@ export class PenToolEngine {
       rightPts.push({ x: curr.x - nx * halfW, y: curr.y - ny * halfW });
     }
 
-    // Build closed ribbon path
+    // Build closed smooth Bezier ribbon path (Module 170887 & 834265)
     let d = `M ${leftPts[0].x.toFixed(2)} ${leftPts[0].y.toFixed(2)}`;
-    for (let i = 1; i < leftPts.length; i++) {
-      d += ` L ${leftPts[i].x.toFixed(2)} ${leftPts[i].y.toFixed(2)}`;
-    }
+    d += this.buildBezierContour(leftPts);
 
     const endHalfW = Math.max(0.5, (points[points.length - 1].width || defaultWidth) / 2);
     const lastRight = rightPts[rightPts.length - 1];
     d += ` A ${endHalfW.toFixed(2)} ${endHalfW.toFixed(2)} 0 0 1 ${lastRight.x.toFixed(2)} ${lastRight.y.toFixed(2)}`;
 
-    for (let i = rightPts.length - 1; i >= 0; i--) {
-      d += ` L ${rightPts[i].x.toFixed(2)} ${rightPts[i].y.toFixed(2)}`;
-    }
+    const revRight = [...rightPts].reverse();
+    d += this.buildBezierContour(revRight);
 
     const startHalfW = Math.max(0.5, (points[0].width || defaultWidth) / 2);
     const firstLeft = leftPts[0];
