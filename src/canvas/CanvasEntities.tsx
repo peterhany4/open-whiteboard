@@ -114,6 +114,54 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
 
   return (
     <>
+      {/* Permanent SVG Defs for Canvas Effects (Persistent across culling & zero-stroke states) */}
+      <svg
+        id="wb-permanent-effect-defs"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 0,
+          height: 0,
+          overflow: 'hidden',
+          pointerEvents: 'none',
+        }}
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient
+            id="wbRainbowGradient"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="300"
+            y2="300"
+            spreadMethod="repeat"
+          >
+            <stop offset="0%" stopColor="#E71224" />
+            <stop offset="20%" stopColor="#F36323" />
+            <stop offset="40%" stopColor="#FED430" />
+            <stop offset="60%" stopColor="#02A556" />
+            <stop offset="80%" stopColor="#0069BF" />
+            <stop offset="100%" stopColor="#914BB8" />
+          </linearGradient>
+          <linearGradient
+            id="wbGalaxyGradient"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="300"
+            y2="300"
+            spreadMethod="repeat"
+          >
+            <stop offset="0%" stopColor="#3C1053" />
+            <stop offset="35%" stopColor="#AD217B" />
+            <stop offset="70%" stopColor="#46CDCF" />
+            <stop offset="100%" stopColor="#E1B12C" />
+          </linearGradient>
+        </defs>
+      </svg>
+
       {/* 1. Background Vector Highlighter Layer (Rendered beneath text widgets, zIndex: 90) */}
       {highlighterStrokes.length > 0 && (
         <svg
@@ -173,22 +221,6 @@ export const CanvasEntities: React.FC<CanvasEntitiesProps> = memo(({ entities })
             zIndex: 200,
           }}
         >
-          <defs>
-            <linearGradient id="wbRainbowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#E71224" />
-              <stop offset="20%" stopColor="#F36323" />
-              <stop offset="40%" stopColor="#FED430" />
-              <stop offset="60%" stopColor="#02A556" />
-              <stop offset="80%" stopColor="#0069BF" />
-              <stop offset="100%" stopColor="#914BB8" />
-            </linearGradient>
-            <linearGradient id="wbGalaxyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#3C1053" />
-              <stop offset="35%" stopColor="#AD217B" />
-              <stop offset="70%" stopColor="#46CDCF" />
-              <stop offset="100%" stopColor="#E1B12C" />
-            </linearGradient>
-          </defs>
           {penStrokes.map((stroke) => (
             <RenderStroke key={stroke.id} stroke={stroke} isDark={isDark} />
           ))}

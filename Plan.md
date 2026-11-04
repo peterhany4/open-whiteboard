@@ -625,15 +625,15 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ---
 
 ### Milestone 32: Galaxy & Rainbow Inking Robustness & Viewport Pattern Shading
-- [ ] **32.1 Root Cause Elimination: UserSpaceOnUse & Persistent Effect Pattern Shaders:**
+- [x] **32.1 Root Cause Elimination: UserSpaceOnUse & Persistent Effect Pattern Shaders:**
   - In `src/canvas/CanvasEntities.tsx` and `src/canvas/CanvasViewport.tsx`:
     - Fix the SVG gradient clipping bug where vertical strokes (0px width in `objectBoundingBox`) or small dots turn completely invisible.
     - Switch gradient / pattern definitions to `gradientUnits="userSpaceOnUse"` or SVG `<pattern>` (Module 133066 spec) with persistent `<defs>` in root SVG layers.
     - Provide robust fallback stroke color (`#FF4E00` for Rainbow, `#AE198D` for Galaxy) so strokes always render reliably.
-- [ ] **32.2 Trajectory Alignment & Consistent Color Rendering During Translation:**
+- [x] **32.2 Trajectory Alignment & Consistent Color Rendering During Translation:**
   - Ensure galaxy and rainbow strokes maintain consistent, vibrant appearance during live drawing, selection, and translation dragging without sudden color jumps or distortion.
   - Harmonize color picker popover to handle effect-based strokes cleanly without stripping or corrupting effect properties.
-- [ ] **32.3 Automated Test Verification & Clean Production Build:**
+- [x] **32.3 Automated Test Verification & Clean Production Build:**
   - Create test script `scratch/test_milestone32_galaxy_rainbow.js` verifying stroke visibility on vertical lines/dots, gradient units, and translation preservation.
   - Run test suite with Node.js and verify `npm run build` passes with 0 TypeScript errors.
 
@@ -675,6 +675,6 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `31.3 Automated Test Verification & Clean Production Build (Milestone 31 Complete)`
-- **Current Active Sub-Task:** `Milestone 31 Complete — Standing by for Git Commit & Push / Next Milestone selection`
+- **Last Completed Sub-Task:** `32.3 Automated Test Verification & Clean Production Build (Milestone 32 Complete)`
+- **Current Active Sub-Task:** `Milestone 32 Complete — Standing by for Git Commit & Push / Next Milestone selection`
 - **Next Recommended Prompt:** `"Proceed with Milestone 34: Microsoft Whiteboard REA Inking & Bezier Spline Restoration"`

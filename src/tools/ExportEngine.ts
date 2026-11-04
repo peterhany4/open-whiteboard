@@ -359,11 +359,13 @@ export class ExportEngine {
           ctx.globalAlpha = bgMode === 'dark' ? 0.55 : 0.38;
           ctx.strokeStyle = stroke.color;
         } else if (stroke.effect === 'rainbow') {
+          const dx = Math.max(30, stroke.bounds.maxX - stroke.bounds.minX);
+          const dy = Math.max(30, stroke.bounds.maxY - stroke.bounds.minY);
           const grad = ctx.createLinearGradient(
             stroke.bounds.minX,
             stroke.bounds.minY,
-            stroke.bounds.maxX,
-            stroke.bounds.minY
+            stroke.bounds.minX + dx,
+            stroke.bounds.minY + dy
           );
           grad.addColorStop(0, '#E71224');
           grad.addColorStop(0.2, '#F36323');
@@ -373,11 +375,13 @@ export class ExportEngine {
           grad.addColorStop(1, '#914BB8');
           ctx.strokeStyle = grad;
         } else if (stroke.effect === 'galaxy') {
+          const dx = Math.max(30, stroke.bounds.maxX - stroke.bounds.minX);
+          const dy = Math.max(30, stroke.bounds.maxY - stroke.bounds.minY);
           const grad = ctx.createLinearGradient(
             stroke.bounds.minX,
             stroke.bounds.minY,
-            stroke.bounds.maxX,
-            stroke.bounds.maxY
+            stroke.bounds.minX + dx,
+            stroke.bounds.minY + dy
           );
           grad.addColorStop(0, '#3C1053');
           grad.addColorStop(0.35, '#AD217B');
@@ -434,7 +438,7 @@ export class ExportEngine {
     // Defs for gradients
     const defs = `
       <defs>
-        <linearGradient id="wbRainbowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+        <linearGradient id="wbRainbowGradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="300" y2="300" spreadMethod="repeat">
           <stop offset="0%" stop-color="#E71224" />
           <stop offset="20%" stop-color="#F36323" />
           <stop offset="40%" stop-color="#FED430" />
@@ -442,7 +446,7 @@ export class ExportEngine {
           <stop offset="80%" stop-color="#0069BF" />
           <stop offset="100%" stop-color="#914BB8" />
         </linearGradient>
-        <linearGradient id="wbGalaxyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id="wbGalaxyGradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="300" y2="300" spreadMethod="repeat">
           <stop offset="0%" stop-color="#3C1053" />
           <stop offset="35%" stop-color="#AD217B" />
           <stop offset="70%" stop-color="#46CDCF" />

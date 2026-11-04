@@ -1368,7 +1368,15 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
               }}
             >
               <defs>
-                <linearGradient id="liveRainbowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <linearGradient
+                  id="liveRainbowGradient"
+                  gradientUnits="userSpaceOnUse"
+                  x1="0"
+                  y1="0"
+                  x2="300"
+                  y2="300"
+                  spreadMethod="repeat"
+                >
                   <stop offset="0%" stopColor="#E71224" />
                   <stop offset="20%" stopColor="#F36323" />
                   <stop offset="40%" stopColor="#FED430" />
@@ -1376,7 +1384,15 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
                   <stop offset="80%" stopColor="#0069BF" />
                   <stop offset="100%" stopColor="#914BB8" />
                 </linearGradient>
-                <linearGradient id="liveGalaxyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <linearGradient
+                  id="liveGalaxyGradient"
+                  gradientUnits="userSpaceOnUse"
+                  x1="0"
+                  y1="0"
+                  x2="300"
+                  y2="300"
+                  spreadMethod="repeat"
+                >
                   <stop offset="0%" stopColor="#3C1053" />
                   <stop offset="35%" stopColor="#AD217B" />
                   <stop offset="70%" stopColor="#46CDCF" />

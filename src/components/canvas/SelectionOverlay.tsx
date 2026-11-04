@@ -567,7 +567,7 @@ export const SelectionOverlay: React.FC = () => {
     historyManager.inUndoGroup('Change Color', () => {
       for (const e of selected) {
         if (e.type === 'stroke') {
-          sceneStore.updateEntity(e.id, { color }, true);
+          sceneStore.updateEntity(e.id, { color, effect: undefined }, true);
         } else if (e.type === 'note') {
           sceneStore.updateEntity(e.id, { color }, true);
         } else if (e.type === 'noteGrid') {
