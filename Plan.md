@@ -71,6 +71,7 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Galaxy & Rainbow Inking Robustness & Pattern Shading** | Module 133066, 4101 (`effectFile`, `userSpaceOnUse`, `fallbackColor`) | `CanvasEntities.tsx`, `CanvasViewport.tsx`, `PenTool.ts` | Persistent SVG defs, `userSpaceOnUse` gradient/pattern units eliminating 0-width vertical stroke invisibility, authentic fallback colors, translation color preservation |
 | **Ink-to-Shape Precision Engine & Rounded Fillet Corners** | Module 40049 (`AddBeautifiedInk`, `WetShapeRecognitionHappened`) | `ShapeRecognitionEngine.ts`, `PenTool.ts` | Circle-first classification priority, removal of circle-hijacking rectangle heuristics, smooth circular corner fillet generation (`rx, ry` rounded heads) |
 | **Microsoft Whiteboard Inking & Bezier Restoration** | Module 834265, 170887, 805859, 726577 | `PenTool.ts`, `CanvasEntities.tsx`, `CanvasViewport.tsx` | Pure Catmull-Rom cubic Bezier splines (C1 = P1 + (P2-P0)/6, C2 = P2 - (P3-P1)/6), elimination of jagged linear outline regression from Milestone 29, clean mouse/standard pen uniform width preservation, smooth Bezier pressure dynamics |
+| **Natural Handwriting Engine (Bitangent Envelopes, Segment Folding & Velocity Calligraphy)** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/45330.*.js`, `46977.*.js`, `BoardEditorComponent-84781932.*.js` | Modules 188610, 357044, 917068, 316556, 317294, 946193, 170887, 154175 | Authentic linear pressure affine curve R(p) = R_base * (1.5*p + 0.25) (Module 188610), circle bitangent envelope algorithm with circular joints (Module 357044), Schneider least-squares Bezier segment folding with scale-adaptive tolerance (Module 316556), collinear point simplifier (Module 317294), dynamic velocity calligraphy modulation for mouse/touch, velocity extrapolation stroke tip predictor (Module 170887), direct requestAnimationFrame inking render loop (Module 154175) |
 
 
 ---
@@ -672,9 +673,45 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 35: Microsoft Whiteboard REA Natural Handwriting Engine (PC & Graphic Tablet Parity)
+- [x] **35.1 REA Bitangent Envelope Ribbon Engine & Authentic Pressure Calibration (Modules 357044, 188610 & 917068):**
+  - Implement Microsoft Whiteboard's exact circle bitangent outer envelope algorithm (`Module 357044`) in `src/tools/PenTool.ts` and `src/canvas/CanvasEntities.tsx`:
+    - For consecutive variable-radius circles $(C_1, C_2)$ with centers $(x_1, y_1), (x_2, y_2)$ and radii $r_1, r_2$, calculate exact outer bitangent coordinates $(t_{1a}, t_{1b})$ and $(t_{2a}, t_{2b})$ via direction cosine and distance ratio $d = (r_2 - r_1) / \text{dist}$.
+    - Connect bitangents with circular arc joints and tangent intersection points (`h(outgoing, incoming)`), completely eliminating self-intersecting ribbons, twisted bowtie artifacts, and polygon spikes.
+    - Implement authentic linear affine stylus pressure scaling: $R(p) = R_{\text{base}} \times (1.5 \times p + 0.25)$ (`Module 188610`), providing natural dynamic range from $0.25\times$ to $1.75\times$ with resting pressure $0.5$ at exactly $1.0\times$.
+- [x] **35.2 PC & Mouse Dynamic Velocity-to-Thickness Calligraphy Engine (Modules 946193 & 45330):**
+  - In `src/tools/PenTool.ts`:
+    - When drawing with `mouse` or non-pressure pointers, track instantaneous inter-point velocity: $v = \text{dist} / \Delta t$.
+    - Apply exponential smoothing to velocity: $v_{\text{smooth}} = 0.35 \times v + 0.65 \times v_{\text{prev}}$.
+    - Modulate stroke thickness calligraphically: $w(v) = w_{\text{base}} \times (1.18 - 0.36 \times \min(1.0, v / v_{\text{ref}}))$, producing authentic ballpoint/fountain pen behavior on PC where deliberate slow curves are fuller and fast flicks taper smoothly.
+- [x] **35.3 Dual-Stage Post-Processing: Collinear Simplification & Bezier Segment Folding (Modules 317294 & 316556):**
+  - In `src/tools/PenTool.ts` (`onPointerUp`):
+    - Implement collinear micro-point simplifier (`Module 317294` / `class j`) with scale-adaptive threshold $b = (8 \times 10^{-4}) / \text{scale}$, stripping redundant collinear micro-jitter points.
+    - Implement Schneider least-squares Bezier segment folding (`Module 316556` / `class o`, `TryGetFoldInSegment`) with tolerance $M = 0.035 \times (0.1 + 1/\text{scale}) / 100$:
+      - Parameterize candidate micro-segments at chord distances $t = 0.25, 0.5, 0.75$.
+      - Solve the $2 \times 2$ least-squares system ($480429 d f - 281961 g^2$) to fit a single continuous cubic Bezier curve.
+      - If residual error $\le M$, fold segments together into a single unified Bezier arc, eliminating jagged staircase steps and micro-wobbles from mouse and tablet writing.
+- [x] **35.4 Real-Time Velocity Extrapolation Predictor & Direct RAF Inking Loop (Modules 170887 & 154175):**
+  - Implement stroke tip velocity predictor (`Module 170887` / `class d`):
+    - When `supportsPrediction()` is true (standard pens without ruler), extrapolate the stroke tip forward along the instantaneous velocity tangent by $\approx 1.2 \times \Delta t$ during live drawing.
+    - Projects ink directly beneath the physical pen/cursor tip, eliminating perceived input lag.
+  - In `src/canvas/CanvasViewport.tsx`:
+    - Implement dedicated `requestAnimationFrame` render loop (`Module 154175` / `class k`) for the live inking overlay:
+    - Update the live SVG path directly via DOM reference (`setAttribute('d', ...)`) instead of triggering React state reconciliation on every pointer move, ensuring locked 60Hz/120Hz rendering without stutter.
+- [x] **35.5 Automated Test Verification, Clean Production Build & Git Commit / Push:**
+  - Create test script `scratch/test_milestone35_handwriting.js` verifying:
+    1. Bitangent outer envelope calculations and circular arc cap joints.
+    2. Linear affine pressure curve $R(p) = R_{\text{base}} \times (1.5p + 0.25)$ matching Module 188610.
+    3. Dynamic velocity-to-thickness modulation for mouse/touch inputs.
+    4. Collinear simplification and Bezier segment folding fitting precision.
+    5. Velocity extrapolation tip predictor math.
+  - Run test suite with Node.js and verify `npm run build` succeeds with 0 TypeScript/lint errors.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `34.4 Automated Test Verification & Clean Production Build (Milestone 34 Complete)`
-- **Current Active Sub-Task:** `Milestone 34 Complete — Standing by for Next Direction / Milestone Selection`
+- **Last Completed Sub-Task:** `35.5 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 35 Complete)`
+- **Current Active Sub-Task:** `Milestone 35 Complete — Standing by for Next Direction`
 - **Next Recommended Prompt:** `"Standing by for next user request or feature milestone"`

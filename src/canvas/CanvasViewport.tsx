@@ -52,13 +52,39 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
   const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
 
   useEffect(() => {
-    const unsubPen = penTool.subscribeLiveStroke(setLiveStroke);
+    // Direct requestAnimationFrame inking loop (Module 154175 class k)
+    // Synchronizes live pen strokes with monitor refresh (60Hz/120Hz/144Hz) without event congestion
+    let pendingStroke: LiveStrokeState | null = null;
+    let rafId: number | null = null;
+
+    const onLiveStroke = (stroke: LiveStrokeState | null) => {
+      pendingStroke = stroke;
+      if (stroke === null) {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        setLiveStroke(null);
+        return;
+      }
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          setLiveStroke(pendingStroke);
+        });
+      }
+    };
+
+    const unsubPen = penTool.subscribeLiveStroke(onLiveStroke);
     const unsubHighlighter = highlighterTool.subscribeLiveStroke(setLiveHighlighter);
     const unsubLaser = laserTool.subscribe(setLaserStroke);
     const unsubEraser = eraserTool.subscribeCursor(setEraserCursor);
     const unsubSelect = selectTool.subscribe(setLiveMarquee);
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       unsubPen();
       unsubHighlighter();
       unsubLaser();

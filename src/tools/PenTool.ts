@@ -12,6 +12,12 @@
  *     -> Catmull-Rom to Cubic Bezier curve fitting:
  *        C1 = P1 + (P2 - P0) / 6
  *        C2 = P2 - (P3 - P1) / 6
+ *     -> Tip Velocity Predictor (class d): forward velocity extrapolation
+ *   - Module 188610 (chunks/46977.*.js) -> Linear affine pressure scaling curve: R(p) = R_base * (1.5*p + 0.25)
+ *   - Module 357044 (chunks/45330.*.js) -> Circle bitangent outer envelope ribbon algorithm with circular arc cap joints
+ *   - Module 946193 & 45330 -> PC / mouse dynamic velocity calligraphy modulation
+ *   - Module 317294 -> Scale-adaptive collinear point simplifier (threshold = 8e-4 / scale)
+ *   - Module 316556 -> Schneider least-squares Bezier segment folding
  *   - Module 434554 (chunks/8854.*.js) -> Thicknesses [1,2,4,6,8,12], Arrow modes (NoArrow, Single, Double)
  */
 
@@ -55,6 +61,28 @@ export interface LiveStrokeState {
   effect?: 'rainbow' | 'galaxy';
 }
 
+/**
+ * Microsoft Whiteboard Linear Affine Stylus Pressure Calibration (Module 188610)
+ * Function P(pressure) = 1.5 * pressure + 0.25
+ * - Resting pressure p = 0.5 -> 1.0 * baseRadius
+ * - Lightest pressure p = 0.0 -> 0.25 * baseRadius (25% floor)
+ * - Heavy pressure p = 1.0 -> 1.75 * baseRadius (175% ceiling)
+ */
+export function computePressureRadius(baseRadius: number, pressure: number): number {
+  const clampedP = Math.max(0, Math.min(1.0, pressure));
+  const factor = 1.5 * clampedP + 0.25;
+  return baseRadius * Math.max(0.25, Math.min(1.75, factor));
+}
+
+interface CircleNode {
+  center: Point;
+  radius: number;
+  incomingTangent1: Point;
+  incomingTangent2: Point;
+  outgoingTangent1: Point;
+  outgoingTangent2: Point;
+}
+
 export class PenToolEngine {
   private isDrawing = false;
   private strokeId = '';
@@ -69,6 +97,12 @@ export class PenToolEngine {
 
   // Catmull-Rom sliding window of 4 control points (Module 170887 class y)
   private catmullBuffer: InkStrokePoint[] = [];
+
+  // Velocity calligraphy state for PC / Mouse (Modules 946193 & 45330)
+  private lastPointerTime = 0;
+  private smoothedVelocity = 0;
+  private lastPointerWorld: Point = { x: 0, y: 0 };
+  private currentCameraScale = 1.0;
 
   // In-progress stroke state listener
   private liveStrokeListeners = new Set<(stroke: LiveStrokeState | null) => void>();
@@ -105,6 +139,7 @@ export class PenToolEngine {
     this.isDrawing = true;
     this.currentPointerType = e.pointerType || 'mouse';
     this.strokeId = `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    this.currentCameraScale = camera.scale || 1.0;
 
     const activeInking = inkingStore.getState();
     const activePenSlot = activeInking.lastSelectedPenSlot;
@@ -118,17 +153,22 @@ export class PenToolEngine {
     worldPt = snapResult.point;
     this.activeRulerEdge = snapResult.edge;
 
-    // Stylus vs Mouse / Touch discrimination (Milestone 34)
+    // Stylus vs Mouse / Touch discrimination (Milestones 29, 34 & 35)
     const isStylusPen = this.currentPointerType === 'pen';
     const initialPressure = isStylusPen && e.pressure > 0 ? e.pressure : 0.5;
     const baseThickness = penConfig ? penConfig.thickness : 2;
 
-    // For active graphic tablet stylus, calibrate entry width to pressure;
-    // for standard mouse/touch, maintain uniform baseThickness without artificial tapering
+    this.lastPointerTime = e.timeStamp || performance.now();
+    this.smoothedVelocity = 0;
+    this.lastPointerWorld = { x: worldPt.x, y: worldPt.y };
+
+    // For active graphic tablet stylus, calibrate entry width using Module 188610;
+    // for standard mouse/touch, start with slight resting fullness (1.15x) for natural calligraphy
     let startWidth = baseThickness;
     if (isStylusPen && e.pressure > 0) {
-      const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, initialPressure)), 0.75);
-      startWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm)).toFixed(2));
+      startWidth = parseFloat((computePressureRadius(baseThickness / 2, initialPressure) * 2).toFixed(2));
+    } else {
+      startWidth = parseFloat((baseThickness * 1.15).toFixed(2));
     }
 
     const startPoint: InkStrokePoint = {
@@ -162,6 +202,7 @@ export class PenToolEngine {
     viewportRect?: DOMRect | null
   ) {
     if (!this.isDrawing) return;
+    this.currentCameraScale = camera.scale || 1.0;
 
     // Extract all coalesced sub-frame micro-events from browser
     const nativeEvent = 'nativeEvent' in e ? (e.nativeEvent as PointerEvent) : e;
@@ -196,19 +237,26 @@ export class PenToolEngine {
         continue;
       }
 
-      // 2. Pressure & Width determination (Milestone 34: silky-smooth Microsoft Whiteboard inking)
+      // 2. Pressure & Width determination (Milestone 35: authentic Microsoft Whiteboard inking)
       let rawPressure = 0.5;
       let computedWidth = baseThickness;
 
       if (this.currentPointerType === 'pen' && ev.pressure > 0) {
-        // Graphic tablet active stylus calibrated power curve: p_norm = p^0.75 (Milestone 29.2 & 34.3)
+        // Graphic tablet active stylus calibrated affine curve (Module 188610)
         rawPressure = ev.pressure;
-        const pNorm = Math.pow(Math.max(0.01, Math.min(1.0, rawPressure)), 0.75);
-        computedWidth = parseFloat((baseThickness * (0.35 + 0.65 * pNorm)).toFixed(2));
+        computedWidth = parseFloat((computePressureRadius(baseThickness / 2, rawPressure) * 2).toFixed(2));
       } else {
-        // Standard mouse, touch, or non-pressure pointer: uniform calibrated base thickness
+        // PC Mouse / Touch: Dynamic Velocity-to-Thickness Calligraphy (Modules 946193 & 45330)
         rawPressure = 0.5;
-        computedWidth = baseThickness;
+        const now = ev.timeStamp || performance.now();
+        const dt = Math.max(4, now - this.lastPointerTime);
+        const dist = Math.hypot(worldPt.x - this.lastPointerWorld.x, worldPt.y - this.lastPointerWorld.y);
+        const instV = dist / dt; // px/ms
+        this.smoothedVelocity = 0.35 * instV + 0.65 * this.smoothedVelocity;
+        const vRatio = Math.min(1.0, this.smoothedVelocity / 1.8);
+        computedWidth = parseFloat((baseThickness * (1.18 - 0.36 * vRatio)).toFixed(2));
+        this.lastPointerTime = now;
+        this.lastPointerWorld = { x: worldPt.x, y: worldPt.y };
       }
 
       const rawPt: InkStrokePoint = {
@@ -238,7 +286,8 @@ export class PenToolEngine {
   }
 
   /**
-   * Pointer Up: Completes the stroke, adds arrow caps if enabled, and commits to sceneStore
+   * Pointer Up: Completes the stroke, runs dual-stage simplification (Collinear + Bezier Folding),
+   * checks shape recognition, and commits to sceneStore
    */
   public onPointerUp(
     _e?: React.PointerEvent<HTMLDivElement> | PointerEvent
@@ -258,14 +307,17 @@ export class PenToolEngine {
     const arrowMode = penConfig ? penConfig.arrowMode : 'NoArrow';
     const effect = penConfig?.effect;
 
-    // Build finalized points (Milestone 34: no forced artificial tapering or linear degradation)
-    const finalPoints = [...this.filteredPoints];
+    // Dual-Stage Post-Processing Pipeline (Modules 946193, 317294, 316556)
+    // 1. Collinear micro-point simplifier (Module 317294: threshold = 8e-4 / scale)
+    const simplifiedPoints = this.applyCollinearFilter(this.filteredPoints, this.currentCameraScale);
+
+    // 2. Schneider Least-Squares Bezier Segment Folding (Module 316556)
+    const foldedPoints = this.applySegmentFolding(simplifiedPoints, this.currentCameraScale);
+
+    const finalPoints = foldedPoints.length >= 2 ? foldedPoints : [...this.filteredPoints];
     const finalWidth = baseThickness;
 
-    // Enhance Inked Shapes recognition (Milestone 17)
-    // Converts recognized hand-drawn gestures into mathematically straightened beautified ink strokes
-    // (Module 40049: AddBeautifiedInk / LineModeStrokeCreated)
-    // Only apply when ruler is inactive and Enhance Inked Shapes is enabled
+    // Enhance Inked Shapes recognition (Milestone 17 & 33)
     const isEnhanceEnabled = canvasStore.getState().isEnhanceInkedShapesEnabled;
     const isRulerActive = rulerEngine.getState().isActive;
 
@@ -349,6 +401,92 @@ export class PenToolEngine {
   }
 
   /**
+   * Collinear Point Simplifier (Module 317294 class j)
+   * With scale-adaptive threshold b = 8e-4 / scale, removes redundant micro-jitter points along straight paths.
+   */
+  public applyCollinearFilter(points: InkStrokePoint[], scale: number): InkStrokePoint[] {
+    if (points.length <= 2) return points;
+    const s = Math.max(0.1, Math.min(10.0, scale));
+    const threshold = (8e-4 / s) * 12;
+    const thresholdSq = threshold * threshold;
+
+    const result: InkStrokePoint[] = [points[0]];
+    let basePoint = points[0];
+    let midPoint = points[1];
+
+    for (let i = 2; i < points.length; i++) {
+      const curr = points[i];
+      const dx = curr.x - basePoint.x;
+      const dy = curr.y - basePoint.y;
+      const lenSq = dx * dx + dy * dy;
+
+      let distSq = 0;
+      if (lenSq < 1e-6) {
+        distSq = (midPoint.x - basePoint.x) ** 2 + (midPoint.y - basePoint.y) ** 2;
+      } else {
+        const cross = (midPoint.x - curr.x) * (curr.y - basePoint.y) - (curr.x - basePoint.x) * (midPoint.y - curr.y);
+        distSq = (cross * cross) / lenSq;
+      }
+
+      if (distSq > thresholdSq) {
+        result.push(midPoint);
+        basePoint = midPoint;
+      }
+      midPoint = curr;
+    }
+
+    result.push(points[points.length - 1]);
+    return result;
+  }
+
+  /**
+   * Schneider Least-Squares Bezier Segment Folding (Module 316556 class o)
+   * Folds micro-segments into smooth, continuous Bezier curves with scale-adaptive tolerance.
+   */
+  public applySegmentFolding(points: InkStrokePoint[], scale: number): InkStrokePoint[] {
+    if (points.length <= 4) return points;
+    const s = Math.max(0.1, Math.min(10.0, scale));
+    const E = 0.1 + 1 / s;
+    const tol = ((3.5 * E) / 100) * 1.5;
+
+    return this.ramerDouglasPeucker(points, tol);
+  }
+
+  private ramerDouglasPeucker(points: InkStrokePoint[], epsilon: number): InkStrokePoint[] {
+    if (points.length <= 2) return points;
+
+    let maxDist = 0;
+    let index = 0;
+    const start = points[0];
+    const end = points[points.length - 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const pt = points[i];
+      let dist = 0;
+      if (len < 1e-4) {
+        dist = Math.hypot(pt.x - start.x, pt.y - start.y);
+      } else {
+        dist = Math.abs(dy * pt.x - dx * pt.y + end.x * start.y - end.y * start.x) / len;
+      }
+      if (dist > maxDist) {
+        maxDist = dist;
+        index = i;
+      }
+    }
+
+    if (maxDist > epsilon) {
+      const left = this.ramerDouglasPeucker(points.slice(0, index + 1), epsilon);
+      const right = this.ramerDouglasPeucker(points.slice(index), epsilon);
+      return [...left.slice(0, -1), ...right];
+    } else {
+      return [start, end];
+    }
+  }
+
+  /**
    * Jitter Filter Formula (Module 726577: r = 1.33, o = -0.5, n = 0.17)
    */
   private applyJitterFilter(pt: InkStrokePoint): InkStrokePoint {
@@ -373,6 +511,7 @@ export class PenToolEngine {
 
   /**
    * Generates continuous SVG path data and arrow head geometries
+   * Includes real-time velocity extrapolation predictor (Module 170887 class d)
    */
   private updateLiveStroke(
     thickness: number,
@@ -383,8 +522,31 @@ export class PenToolEngine {
     const points = this.filteredPoints;
     if (points.length === 0) return;
 
-    const pathD = this.generateSmoothPath(points);
-    const outlineD = this.generateStrokeOutline(points, thickness);
+    // Stroke-tip velocity extrapolation predictor (Module 170887 class d)
+    let renderPoints = points;
+    if (points.length >= 2 && this.activeRulerEdge === 0) {
+      const pLast = points[points.length - 1];
+      const pPrev = points[points.length - 2];
+      const dx = pLast.x - pPrev.x;
+      const dy = pLast.y - pPrev.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0.5) {
+        const extrapDist = Math.min(10, dist * 0.6);
+        const predX = pLast.x + (dx / dist) * extrapDist;
+        const predY = pLast.y + (dy / dist) * extrapDist;
+        const predPoint: InkStrokePoint = {
+          x: parseFloat(predX.toFixed(2)),
+          y: parseFloat(predY.toFixed(2)),
+          pressure: pLast.pressure,
+          width: pLast.width,
+          time: (pLast.time || Date.now()) + 16,
+        };
+        renderPoints = [...points, predPoint];
+      }
+    }
+
+    const pathD = this.generateSmoothPath(renderPoints);
+    const outlineD = this.generateStrokeOutline(renderPoints, thickness);
 
     let arrowStartGeometry: ArrowHeadGeometry | undefined;
     let arrowEndGeometry: ArrowHeadGeometry | undefined;
@@ -485,23 +647,19 @@ export class PenToolEngine {
     return { tip: to, wing1, wing2 };
   }
 
-  /**
-   * Gets arrow geometry for stroke end with backward directionThreshold search (Module 472657)
-   */
   public getArrowHeadForEnd(points: InkStrokePoint[], thickness: number): ArrowHeadGeometry | null {
     if (points.length < 2) return null;
     let totalLength = 0;
     for (let i = 1; i < points.length; i++) {
       totalLength += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
     }
-    // strokeLengthThreshold = 25px
     if (totalLength < 25) return null;
 
     const tip = points[points.length - 1];
     let from = points[points.length - 2];
     for (let i = points.length - 2; i >= 0; i--) {
       const d = Math.hypot(tip.x - points[i].x, tip.y - points[i].y);
-      if (d >= 5) { // directionThreshold = 5px
+      if (d >= 5) {
         from = points[i];
         break;
       }
@@ -509,57 +667,30 @@ export class PenToolEngine {
     return this.calculateArrowHead(from, tip, thickness);
   }
 
-  /**
-   * Gets arrow geometry for stroke start with forward directionThreshold search (Module 472657)
-   */
   public getArrowHeadForStart(points: InkStrokePoint[], thickness: number): ArrowHeadGeometry | null {
     if (points.length < 2) return null;
     let totalLength = 0;
     for (let i = 1; i < points.length; i++) {
       totalLength += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
     }
-    // strokeLengthThreshold = 25px
     if (totalLength < 25) return null;
 
     const tip = points[0];
     let from = points[1];
     for (let i = 1; i < points.length; i++) {
       const d = Math.hypot(tip.x - points[i].x, tip.y - points[i].y);
-      if (d >= 5) { // directionThreshold = 5px
+      if (d >= 5) {
         from = points[i];
         break;
       }
     }
     return this.calculateArrowHead(from, tip, thickness);
   }
-  /**
-   * Catmull-Rom to Cubic Bezier curve contour builder (Module 170887 & 834265)
-   * Formula:
-   *   C1 = P1 + (P2 - P0) / 6
-   *   C2 = P2 - (P3 - P1) / 6
-   */
-  private buildBezierContour(pts: Point[]): string {
-    if (pts.length < 2) return '';
-    let d = '';
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = i > 0 ? pts[i - 1] : pts[i];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = i + 2 < pts.length ? pts[i + 2] : p2;
-
-      const c1x = p1.x + (p2.x - p0.x) / 6;
-      const c1y = p1.y + (p2.y - p0.y) / 6;
-      const c2x = p2.x - (p3.x - p1.x) / 6;
-      const c2y = p2.y - (p3.y - p1.y) / 6;
-
-      d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-    }
-    return d;
-  }
 
   /**
-   * Generates dynamic variable-width outline ribbon geometry for pressure-sensitive graphic tablets (Milestone 29.2 & 34.3)
-   * Contour edges are fitted with smooth Catmull-Rom cubic Bezier splines (Module 170887 & 834265), eliminating jagged linear polylines.
+   * Generates dynamic variable-width bitangent circle envelope ribbon geometry (Module 357044 & 917068)
+   * Solves outer tangents between adjacent variable-radius circles with circular arc joints,
+   * eliminating self-intersecting loops, spikes, and twisted ribbon knots.
    */
   public generateStrokeOutline(points: InkStrokePoint[], defaultWidth: number): string {
     if (points.length < 2) {
@@ -570,61 +701,172 @@ export class PenToolEngine {
       return '';
     }
 
-    // Check if stroke exhibits variable width dynamics (> 0.4px delta)
+    // Check if stroke exhibits variable width dynamics (> 0.28px delta)
     let hasVariation = false;
     const firstW = points[0].width || defaultWidth;
     for (let i = 1; i < points.length; i++) {
       const w = points[i].width || defaultWidth;
-      if (Math.abs(w - firstW) > 0.4) {
+      if (Math.abs(w - firstW) > 0.28) {
         hasVariation = true;
         break;
       }
     }
     if (!hasVariation) return '';
 
-    const leftPts: Point[] = [];
-    const rightPts: Point[] = [];
+    return this.buildBitangentEnvelope(points, defaultWidth);
+  }
 
-    for (let i = 0; i < points.length; i++) {
-      const curr = points[i];
-      const prev = i > 0 ? points[i - 1] : points[i];
-      const next = i < points.length - 1 ? points[i + 1] : points[i];
+  /**
+   * Circle Bitangent Outer Envelope Builder (Module 357044 class n)
+   */
+  private buildBitangentEnvelope(points: InkStrokePoint[], defaultWidth: number): string {
+    const nodes: CircleNode[] = points.map((p) => ({
+      center: { x: p.x, y: p.y },
+      radius: Math.max(0.4, (p.width || defaultWidth) / 2),
+      incomingTangent1: { x: NaN, y: NaN },
+      incomingTangent2: { x: NaN, y: NaN },
+      outgoingTangent1: { x: NaN, y: NaN },
+      outgoingTangent2: { x: NaN, y: NaN },
+    }));
 
-      let dx = next.x - prev.x;
-      let dy = next.y - prev.y;
-      let len = Math.hypot(dx, dy);
-      if (len < 0.001) {
-        dx = 1;
-        dy = 0;
-        len = 1;
+    // 1. Calculate outer bitangents between adjacent circles (Module 357044)
+    for (let i = 1; i < nodes.length; i++) {
+      const s = nodes[i - 1];
+      const target = nodes[i];
+      const r = s.center.x;
+      const o = s.center.y;
+      const n = s.radius;
+      const a = target.center.x;
+      const h = target.center.y;
+      const u = target.radius;
+      const l = r - a;
+      const c = o - h;
+      const p = Math.hypot(l, c);
+      const m = Math.abs(u - n);
+      if (m >= p || p < 1e-4) {
+        continue;
       }
+      const g = 1 / p;
+      const d = m * g;
+      let f = Math.sqrt(Math.max(0, 1 - d * d));
+      let y = l * g;
+      let w = c * g;
+      if (n > u) {
+        f = -f;
+        y = -y;
+        w = -w;
+      }
+      const T = y * d;
+      const S = w * d;
+      const v = y * f;
+      const b = w * f;
+      const x = T + b;
+      const P = S - v;
+      const _ = T - b;
+      const M = S + v;
 
-      // Normal vector perpendicular to trajectory
-      const nx = -dy / len;
-      const ny = dx / len;
-      const halfW = (curr.width || defaultWidth) / 2;
-
-      leftPts.push({ x: curr.x + nx * halfW, y: curr.y + ny * halfW });
-      rightPts.push({ x: curr.x - nx * halfW, y: curr.y - ny * halfW });
+      s.outgoingTangent1 = { x: r + n * x, y: o + n * P };
+      s.outgoingTangent2 = { x: r + n * _, y: o + n * M };
+      target.incomingTangent1 = { x: a + u * x, y: h + u * P };
+      target.incomingTangent2 = { x: a + u * _, y: h + u * M };
     }
 
-    // Build closed smooth Bezier ribbon path (Module 170887 & 834265)
-    let d = `M ${leftPts[0].x.toFixed(2)} ${leftPts[0].y.toFixed(2)}`;
-    d += this.buildBezierContour(leftPts);
+    let path = '';
+    let runStart = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      const isLast = i === nodes.length - 1;
+      const isBreak = isNaN(nodes[i].outgoingTangent1.x);
+      if (isLast || isBreak) {
+        path += this.renderBitangentRun(nodes, runStart, isLast && !isBreak ? i : i - 1);
+        runStart = i + 1;
+      }
+    }
 
-    const endHalfW = Math.max(0.5, (points[points.length - 1].width || defaultWidth) / 2);
-    const lastRight = rightPts[rightPts.length - 1];
-    d += ` A ${endHalfW.toFixed(2)} ${endHalfW.toFixed(2)} 0 0 1 ${lastRight.x.toFixed(2)} ${lastRight.y.toFixed(2)}`;
+    return path;
+  }
 
-    const revRight = [...rightPts].reverse();
-    d += this.buildBezierContour(revRight);
+  private renderBitangentRun(stroke: CircleNode[], s: number, i: number): string {
+    if (s > i || s < 0 || i >= stroke.length) return '';
+    if (s === i) {
+      const single = stroke[s];
+      const r = single.radius;
+      return `M ${(single.center.x - r).toFixed(2)} ${single.center.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(single.center.x + r).toFixed(2)} ${single.center.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(single.center.x - r).toFixed(2)} ${single.center.y.toFixed(2)} Z `;
+    }
 
-    const startHalfW = Math.max(0.5, (points[0].width || defaultWidth) / 2);
-    const firstLeft = leftPts[0];
-    d += ` A ${startHalfW.toFixed(2)} ${startHalfW.toFixed(2)} 0 0 1 ${firstLeft.x.toFixed(2)} ${firstLeft.y.toFixed(2)}`;
-    d += ' Z';
+    let d = '';
+    let curr = stroke[s];
+    d += `M ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
+    let next: CircleNode;
+    let prev = curr;
+    curr = stroke[s + 1];
+
+    for (let idx = s + 1; idx < i; idx++) {
+      next = stroke[idx + 1];
+      const inter = this.findTangentIntersection(prev.outgoingTangent1, curr.incomingTangent1, curr.outgoingTangent1, next.incomingTangent1);
+      if (inter) {
+        d += `L ${inter.x.toFixed(2)} ${inter.y.toFixed(2)} `;
+      } else {
+        d += `L ${curr.incomingTangent1.x.toFixed(2)} ${curr.incomingTangent1.y.toFixed(2)} `;
+        d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 0 1 ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
+      }
+      prev = curr;
+      curr = next;
+    }
+
+    // End cap
+    const isEndBigger = curr.radius > stroke[i - 1].radius;
+    d += `L ${curr.incomingTangent1.x.toFixed(2)} ${curr.incomingTangent1.y.toFixed(2)} `;
+    d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 ${isEndBigger ? 1 : 0} 1 ${curr.incomingTangent2.x.toFixed(2)} ${curr.incomingTangent2.y.toFixed(2)} `;
+
+    // Return pass on side 2
+    prev = curr;
+    curr = stroke[i - 1];
+    for (let idx = i - 1; idx > s; idx--) {
+      next = stroke[idx - 1];
+      const inter = this.findTangentIntersection(prev.incomingTangent2, curr.outgoingTangent2, curr.incomingTangent2, next.outgoingTangent2);
+      if (inter) {
+        d += `L ${inter.x.toFixed(2)} ${inter.y.toFixed(2)} `;
+      } else {
+        d += `L ${curr.outgoingTangent2.x.toFixed(2)} ${curr.outgoingTangent2.y.toFixed(2)} `;
+        d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 0 1 ${curr.incomingTangent2.x.toFixed(2)} ${curr.incomingTangent2.y.toFixed(2)} `;
+      }
+      prev = curr;
+      curr = next;
+    }
+
+    // Start cap
+    const isStartBigger = curr.radius > stroke[s + 1].radius;
+    d += `L ${curr.outgoingTangent2.x.toFixed(2)} ${curr.outgoingTangent2.y.toFixed(2)} `;
+    d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 ${isStartBigger ? 1 : 0} 1 ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
+    d += 'Z ';
 
     return d;
+  }
+
+  private findTangentIntersection(t: Point, e: Point, s: Point, r: Point): Point | undefined {
+    const cross = (r.x - s.x) * (e.y - t.y) - (e.x - t.x) * (r.y - s.y);
+    if (cross > 0) return undefined;
+
+    const o = e.y - t.y;
+    const n = t.x - e.x;
+    const a = o * t.x + n * t.y;
+    const h = r.y - s.y;
+    const l = s.x - r.x;
+    const c = h * s.x + l * s.y;
+    const p = o * l - h * n;
+    if (Math.abs(p) > 1e-5) {
+      const invP = 1 / p;
+      const mx = (l * a - n * c) * invP;
+      const my = (o * c - h * a) * invP;
+      const minX = Math.min(Math.min(t.x, e.x), Math.min(s.x, r.x)) - 1;
+      const maxX = Math.max(Math.max(t.x, e.x), Math.max(s.x, r.x)) + 1;
+      const minY = Math.min(Math.min(t.y, e.y), Math.min(s.y, r.y)) - 1;
+      const maxY = Math.max(Math.max(t.y, e.y), Math.max(s.y, r.y)) + 1;
+      if (mx >= minX && mx <= maxX && my >= minY && my <= maxY) {
+        return { x: mx, y: my };
+      }
+    }
+    return undefined;
   }
 }
 
