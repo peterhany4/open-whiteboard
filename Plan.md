@@ -751,9 +751,33 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 38: Web & Desktop Eraser Shortcut (Alt+X / E) Resolution & Universal Object Copy/Paste (Ctrl+C / Ctrl+V) Engine
+- [x] **38.1 Bug Fix: Web Browser & Desktop Alt+X / E Eraser Tool Activation:**
+  - In `src/tools/ShortcutEngine.ts`:
+    - In web browsers, Windows Chrome and Edge intercept `Alt` to focus the browser's menu bar or wrench menu unless captured and stopped.
+    - Add `e.preventDefault()` and `e.stopPropagation()`.
+    - Support both physical key codes and character keys: `code === 'KeyX' || key === 'x'` with `e.altKey` (supporting Left Alt and Right Alt / `AltGr` on international layouts).
+    - Also support single-key `E` (and `Alt+E`) outside text inputs per Microsoft Whiteboard REA Module 40049 so users can switch to Eraser instantly with a single keystroke.
+    - Call `inkingStore.closePopover()`, `selectionStore.clearSelection()`, and `inkingStore.selectTool('Eraser')` so the toolbar updates immediately and pointer events on the canvas switch to erase mode.
+  - In `electron/main.cts`:
+    - Call `Menu.setApplicationMenu(null)`, `mainWindow.removeMenu()`, and `mainWindow.setMenuBarVisibility(false)` so desktop builds also never intercept `Alt`.
+- [x] **38.2 Canvas Object Clipboard Engine & Web Ctrl+V Paste Integration:**
+  - In `src/tools/ShortcutEngine.ts`:
+    - Add missing `Ctrl+V` (`key === 'v' || code === 'KeyV'`) handler in the `keydown` capture phase.
+    - When not focused in a text input, prevent browser default, call `getClipboardEntities()` (which checks system clipboard and `inMemoryClipboardBuffer`), and invoke `pasteEntities(entities)`.
+    - If system clipboard has an image blob, read via `navigator.clipboard.read()` and paste as an `ImageEntity`.
+  - In `src/canvas/CanvasViewport.tsx`:
+    - Update `handlePaste` to fall back to `getClipboardEntities()` / `inMemoryClipboardBuffer` when `e.clipboardData?.getData('text/plain')` is empty or blocked by browser permissions, ensuring pasted objects are created with incremental offset, registered in Undo/Redo history, and selected immediately.
+- [x] **38.3 Automated Test Verification, Clean Production Build & Git Commit / Push (Including scratch/ folder):**
+  - Create test script `scratch/test_milestone38_copy_paste_altx.js` verifying Alt+X/Alt+E/E eraser activation, object copy-to-clipboard serialization, and `Ctrl+V` object pasting with spatial offset and Undo/Redo tracking.
+  - Run `npm run build` with 0 errors.
+  - Update `Plan.md` and commit/push all changes (including `scratch/`) to GitHub.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `37.3 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 37 Complete)`
-- **Current Active Sub-Task:** `Milestone 37 Complete — Standing by for Next Direction`
-- **Next Recommended Prompt:** `"Standing by for next user request or feature milestone"`
+- **Last Completed Sub-Task:** `38.3 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 38 Complete)`
+- **Current Active Sub-Task:** `Milestone 38 Complete, awaiting user review and next instructions`
+- **Next Recommended Prompt:** `"Proceed with next feature milestone or user guidance"`

@@ -20,6 +20,8 @@ import type {
 import { computeStrokeBounds, computeEntityBounds } from '../canvas/sceneGraph';
 import { sceneStore } from '../store/sceneStore';
 import { selectionStore } from '../store/selectionStore';
+import { canvasStore } from '../store/canvasStore';
+import { screenToWorld } from '../canvas/camera';
 import { historyManager } from '../canvas/history';
 
 export const CLIPBOARD_PAYLOAD_TYPE = 'open-whiteboard-entities';
@@ -229,4 +231,194 @@ export function pasteEntities(
 
   selectionStore.selectMultiple(newIds);
   return newIds;
+}
+
+/**
+ * Pastes an image Blob into the scene, centering it in the active camera viewport,
+ * records in Undo/Redo history, and selects the new Image entity.
+ */
+export async function pasteImageBlob(
+  blob: Blob,
+  worldPos?: { x: number; y: number }
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth || 360;
+        let h = img.naturalHeight || 270;
+        const maxDim = 480;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+
+        let center = worldPos;
+        if (!center) {
+          const camera = canvasStore.getState().camera;
+          const viewportEl = typeof document !== 'undefined' ? document.querySelector('.whiteboard-canvas-viewport') : null;
+          const rect = viewportEl?.getBoundingClientRect();
+          const screenCenter = {
+            x: rect ? rect.left + rect.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 500),
+            y: rect ? rect.top + rect.height / 2 : (typeof window !== 'undefined' ? window.innerHeight / 2 : 400),
+          };
+          center = screenToWorld(screenCenter, camera, rect);
+        }
+
+        const timestamp = Date.now();
+        const id = `image_paste_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
+        const x = Math.round(center.x - w / 2);
+        const y = Math.round(center.y - h / 2);
+
+        const imageEntity: ImageEntity = {
+          id,
+          type: 'image',
+          x,
+          y,
+          width: w,
+          height: h,
+          src: dataUrl,
+          isLockedToBackground: false,
+          isLocked: false,
+          fileName: 'Pasted Image',
+          zIndex: 100,
+          bounds: {
+            minX: x,
+            minY: y,
+            maxX: x + w,
+            maxY: y + h,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+
+        historyManager.inUndoGroup('Paste Image', () => {
+          sceneStore.addEntity(imageEntity, true);
+        });
+        selectionStore.select(id);
+        resolve(id);
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Pastes external plain text as a new TextEntity centered in the active viewport.
+ */
+export function pastePlainText(
+  text: string,
+  worldPos?: { x: number; y: number }
+): string {
+  let center = worldPos;
+  if (!center) {
+    const camera = canvasStore.getState().camera;
+    const viewportEl = typeof document !== 'undefined' ? document.querySelector('.whiteboard-canvas-viewport') : null;
+    const rect = viewportEl?.getBoundingClientRect();
+    const screenCenter = {
+      x: rect ? rect.left + rect.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 500),
+      y: rect ? rect.top + rect.height / 2 : (typeof window !== 'undefined' ? window.innerHeight / 2 : 400),
+    };
+    center = screenToWorld(screenCenter, camera, rect);
+  }
+
+  const timestamp = Date.now();
+  const id = `text_paste_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
+  const width = Math.min(400, Math.max(200, text.length * 9));
+  const height = 60;
+  const x = Math.round(center.x - width / 2);
+  const y = Math.round(center.y - height / 2);
+
+  const textEntity: TextEntity = {
+    id,
+    type: 'text',
+    x,
+    y,
+    width,
+    height,
+    text,
+    fontSize: 18,
+    color: '#1F1F1F',
+    zIndex: 200,
+    bounds: {
+      minX: x,
+      minY: y,
+      maxX: x + width,
+      maxY: y + height,
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  historyManager.inUndoGroup('Paste Text', () => {
+    sceneStore.addEntity(textEntity, true);
+  });
+  selectionStore.select(id);
+  return id;
+}
+
+/**
+ * Universal paste orchestrator:
+ * 1. Checks serialized canvas entities (system clipboard or in-memory fallback).
+ * 2. Checks image blobs from system clipboard.
+ * 3. Checks external text string from system clipboard.
+ */
+export async function executeUniversalPaste(): Promise<boolean> {
+  // 1. Try serialized entities
+  try {
+    const entities = await getClipboardEntities();
+    if (entities && entities.length > 0) {
+      pasteEntities(entities);
+      return true;
+    }
+  } catch (err) {
+    console.warn('[Clipboard] Failed reading entities:', err);
+  }
+
+  // 2. Try image blobs in navigator.clipboard
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const id = await pasteImageBlob(blob);
+          if (id) return true;
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Try plain text in navigator.clipboard
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim().length > 0) {
+        const payload = parseClipboardPayload(text);
+        if (payload && payload.entities && payload.entities.length > 0) {
+          pasteEntities(payload.entities);
+          return true;
+        }
+        pastePlainText(text.trim());
+        return true;
+      }
+    } catch {}
+  }
+
+  return false;
+}
+
+export function getInMemoryClipboardBuffer(): CanvasEntity[] | null {
+  return inMemoryClipboardBuffer ? JSON.parse(JSON.stringify(inMemoryClipboardBuffer)) : null;
 }

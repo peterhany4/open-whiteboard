@@ -16,7 +16,7 @@ import { selectionStore } from '../store/selectionStore';
 import { sceneStore } from '../store/sceneStore';
 import { boardStore } from '../store/boardStore';
 import { historyManager } from '../canvas/history';
-import { copySelectedToClipboard } from './clipboard';
+import { copySelectedToClipboard, executeUniversalPaste } from './clipboard';
 
 export interface ShortcutDefinition {
   key: string;
@@ -28,14 +28,16 @@ export class ShortcutEngine {
   private isListening = false;
 
   private isTextInput(el: EventTarget | null): boolean {
-    if (!el || !(el instanceof HTMLElement)) return false;
-    const tag = el.tagName;
+    if (!el) return false;
+    if (typeof HTMLElement !== 'undefined' && !(el instanceof HTMLElement)) return false;
+    const anyEl = el as any;
+    const tag = anyEl.tagName;
     return (
       tag === 'INPUT' ||
       tag === 'TEXTAREA' ||
-      el.isContentEditable ||
-      el.getAttribute('role') === 'textbox' ||
-      el.classList.contains('canvas-text-input')
+      Boolean(anyEl.isContentEditable) ||
+      anyEl.getAttribute?.('role') === 'textbox' ||
+      Boolean(anyEl.classList?.contains?.('canvas-text-input'))
     );
   }
 
@@ -53,18 +55,58 @@ export class ShortcutEngine {
       return;
     }
 
-    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
     const code = e.code;
+    const isAltGr = Boolean(e.getModifierState && e.getModifierState('AltGraph'));
+    const isAlt = e.altKey || isAltGr;
+    // On Windows AltGr sets ctrlKey=true, so mask it out
+    const isCtrlOrMeta = (e.ctrlKey || e.metaKey) && !isAltGr;
 
-    // 3. Modifier-based shortcuts (Ctrl / Cmd) — Dual key & code checking for international layouts
-    if (isCtrlOrMeta && !e.altKey) {
+    // 3. Bare Alt key intercept (prevents Windows Chrome / Edge from hijacking focus to browser menu bar)
+    if (key === 'alt' || code === 'AltLeft' || code === 'AltRight') {
+      e.preventDefault();
+      return;
+    }
+
+    // 4. Alt-based shortcuts (Alt+W for Pen 1, Alt+X / Alt+E for Eraser)
+    if (isAlt) {
+      const isX = key === 'x' || code === 'KeyX';
+      const isE = key === 'e' || code === 'KeyE';
+      const isW = key === 'w' || code === 'KeyW';
+
+      if (isW) {
+        e.preventDefault();
+        e.stopPropagation();
+        inkingStore.selectPen('Pen1');
+        inkingStore.closePopover();
+        selectionStore.clearSelection();
+        return;
+      }
+
+      if (isX || isE) {
+        e.preventDefault();
+        e.stopPropagation();
+        inkingStore.selectTool('Eraser');
+        inkingStore.closePopover();
+        selectionStore.clearSelection();
+        return;
+      }
+
+      // Prevent Windows browser menu activation on unhandled Alt combos
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    // 5. Modifier-based shortcuts (Ctrl / Cmd) — Dual key & code checking for international layouts
+    if (isCtrlOrMeta && !isAlt) {
       const isZ = key === 'z' || code === 'KeyZ';
       const isY = key === 'y' || code === 'KeyY';
 
       // Undo: Ctrl+Z (without Shift)
       if (isZ && !e.shiftKey) {
         e.preventDefault();
+        e.stopPropagation();
         canvasStore.triggerUndo();
         return;
       }
@@ -72,6 +114,7 @@ export class ShortcutEngine {
       // Redo: Ctrl+Y or Ctrl+Shift+Z
       if (isY || (isZ && e.shiftKey)) {
         e.preventDefault();
+        e.stopPropagation();
         canvasStore.triggerRedo();
         return;
       }
@@ -79,6 +122,7 @@ export class ShortcutEngine {
       // Select All: Ctrl+A
       if (key === 'a' || code === 'KeyA') {
         e.preventDefault();
+        e.stopPropagation();
         selectionStore.selectAll();
         return;
       }
@@ -87,29 +131,45 @@ export class ShortcutEngine {
       if (key === 'd' || code === 'KeyD') {
         if (selectionStore.getSelectedCount() > 0) {
           e.preventDefault();
+          e.stopPropagation();
           selectionStore.duplicateSelected();
+        }
+        return;
+      }
+
+      // Cut: Ctrl+X
+      if (key === 'x' || code === 'KeyX') {
+        if (selectionStore.getSelectedCount() > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          copySelectedToClipboard();
+          selectionStore.deleteSelected();
         }
         return;
       }
 
       // Copy: Ctrl+C
       if (key === 'c' || code === 'KeyC') {
-        const domSelection = window.getSelection();
-        if (domSelection && domSelection.toString().length > 0) {
-          // Native text selection on page takes precedence
-          return;
-        }
-
         if (selectionStore.getSelectedCount() > 0) {
           e.preventDefault();
+          e.stopPropagation();
           copySelectedToClipboard();
         }
+        return;
+      }
+
+      // Paste: Ctrl+V
+      if (key === 'v' || code === 'KeyV') {
+        e.preventDefault();
+        e.stopPropagation();
+        executeUniversalPaste();
         return;
       }
 
       // Zoom In: Ctrl++ or Ctrl+=
       if (key === '=' || key === '+' || code === 'Equal' || code === 'NumpadAdd') {
         e.preventDefault();
+        e.stopPropagation();
         canvasStore.zoomIn();
         return;
       }
@@ -117,6 +177,7 @@ export class ShortcutEngine {
       // Zoom Out: Ctrl+- or Ctrl+_
       if (key === '-' || key === '_' || code === 'Minus' || code === 'NumpadSubtract') {
         e.preventDefault();
+        e.stopPropagation();
         canvasStore.zoomOut();
         return;
       }
@@ -126,6 +187,7 @@ export class ShortcutEngine {
         const ids = Array.from(selectionStore.getSelectedIds());
         if (ids.length > 0) {
           e.preventDefault();
+          e.stopPropagation();
           sceneStore.bringToFront(ids);
         }
         return;
@@ -136,6 +198,7 @@ export class ShortcutEngine {
         const ids = Array.from(selectionStore.getSelectedIds());
         if (ids.length > 0) {
           e.preventDefault();
+          e.stopPropagation();
           sceneStore.sendToBack(ids);
         }
         return;
@@ -146,6 +209,7 @@ export class ShortcutEngine {
         const selected = selectionStore.getSelectedEntities();
         if (selected.length > 0) {
           e.preventDefault();
+          e.stopPropagation();
           const targetLock = selected.some(
             (ent) => !ent.isLocked && !(ent.type === 'image' && (ent as any).isLockedToBackground)
           );
@@ -179,59 +243,60 @@ export class ShortcutEngine {
         return;
       }
 
-      // Allow browser shortcuts like Ctrl+Shift+I / Ctrl+P to proceed without interference
       return;
     }
 
-    // 4. Milestone 16 Ergonomic Alt-key shortcuts (Alt+W for Pen 1, Alt+X for Eraser)
-    if (e.altKey && !isCtrlOrMeta) {
-      if (key === 'w' || code === 'KeyW') {
+    // 6. Microsoft Whiteboard Single-Key Shortcuts outside text inputs (Module 40049)
+    if (!isCtrlOrMeta && !isAlt && !e.shiftKey) {
+      // Eraser: E
+      if (key === 'e' || code === 'KeyE') {
         e.preventDefault();
-        inkingStore.selectPen('Pen1');
-        return;
-      }
-      if (key === 'x' || code === 'KeyX') {
-        e.preventDefault();
-        inkingStore.setSelectedTool('Eraser');
-        return;
-      }
-      return;
-    }
-
-    // 5. Milestone 16 Whitelisted Non-Modifier Keys (Delete/Backspace, Escape only)
-    if (key === 'delete' || key === 'backspace' || code === 'Delete' || code === 'Backspace') {
-      if (selectionStore.getSelectedCount() > 0) {
-        e.preventDefault();
-        selectionStore.deleteSelected();
-      }
-      return;
-    }
-
-    if (key === 'escape' || code === 'Escape') {
-      e.preventDefault();
-      if (inkingStore.getState().activePopover !== null) {
+        e.stopPropagation();
+        inkingStore.selectTool('Eraser');
         inkingStore.closePopover();
-      } else if (canvasStore.getState().isCreatePanelOpen) {
-        canvasStore.closeCreatePanel();
-      } else if (canvasStore.getState().isSettingsOpen) {
-        canvasStore.closeSettings();
-      } else if (selectionStore.getSelectedCount() > 0) {
         selectionStore.clearSelection();
-      } else if (inkingStore.getState().selectedTool !== 'Select') {
-        inkingStore.selectTool('Select');
+        return;
       }
-      return;
+
+      // Delete / Backspace: Delete selected
+      if (key === 'delete' || key === 'backspace' || code === 'Delete' || code === 'Backspace') {
+        if (selectionStore.getSelectedCount() > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          selectionStore.deleteSelected();
+        }
+        return;
+      }
+
+      // Escape: Dismiss active popovers, panels, selection, or return to Select Tool
+      if (key === 'escape' || code === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (inkingStore.getState().activePopover !== null) {
+          inkingStore.closePopover();
+        } else if (canvasStore.getState().isCreatePanelOpen) {
+          canvasStore.closeCreatePanel();
+        } else if (canvasStore.getState().isSettingsOpen) {
+          canvasStore.closeSettings();
+        } else if (selectionStore.getSelectedCount() > 0) {
+          selectionStore.clearSelection();
+        } else if (inkingStore.getState().selectedTool !== 'Select') {
+          inkingStore.selectTool('Select');
+        }
+        return;
+      }
     }
   };
 
   public getRegisteredShortcuts(): ShortcutDefinition[] {
     return [
       { key: 'Alt+W', description: 'Pen Tool (Pen 1)', badge: 'Alt+W' },
-      { key: 'Alt+X', description: 'Eraser Tool', badge: 'Alt+X' },
+      { key: 'Alt+X / E', description: 'Eraser Tool', badge: 'Alt+X' },
       { key: 'Ctrl + +', description: 'Zoom In', badge: 'Ctrl++' },
       { key: 'Ctrl + -', description: 'Zoom Out', badge: 'Ctrl+-' },
       { key: 'Ctrl+Z / Ctrl+Y', description: 'Undo / Redo', badge: 'Ctrl+Z/Y' },
       { key: 'Ctrl+C', description: 'Copy Selected Objects', badge: 'Ctrl+C' },
+      { key: 'Ctrl+X', description: 'Cut Selected Objects', badge: 'Ctrl+X' },
       { key: 'Ctrl+V', description: 'Paste Objects or Images', badge: 'Ctrl+V' },
       { key: 'Ctrl+D', description: 'Duplicate Selected Objects', badge: 'Ctrl+D' },
       { key: 'Delete / Backspace', description: 'Delete Selected Objects', badge: 'Del' },

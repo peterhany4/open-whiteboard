@@ -28,7 +28,7 @@ import { historyManager } from './history';
 import * as pdfjsLib from 'pdfjs-dist';
 import { dataUrlToUint8Array } from '../components/canvas/PDFDocumentWidget';
 import { toastStore } from '../store/toastStore';
-import { parseClipboardPayload, pasteEntities, getClipboardEntities } from '../tools/clipboard';
+import { parseClipboardPayload, pasteEntities, getClipboardEntities, pasteImageBlob, pastePlainText } from '../tools/clipboard';
 
 interface CanvasViewportProps {
   children?: React.ReactNode;
@@ -518,76 +518,26 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
             const file = item.getAsFile();
             if (file) {
               e.preventDefault();
-              const rect = viewportRef.current?.getBoundingClientRect();
-              const screenCenter = {
-                x: rect ? rect.left + rect.width / 2 : window.innerWidth / 2,
-                y: rect ? rect.top + rect.height / 2 : window.innerHeight / 2,
-              };
-              const worldPt = screenToWorld(screenCenter, camera, rect);
-
-              const reader = new FileReader();
-              reader.onload = (event) => {
-                const dataUrl = event.target?.result as string;
-                const img = new Image();
-                img.onload = () => {
-                  let w = img.naturalWidth || 360;
-                  let h = img.naturalHeight || 270;
-                  const maxDim = 480;
-                  if (w > maxDim || h > maxDim) {
-                    if (w > h) {
-                      h = Math.round((h * maxDim) / w);
-                      w = maxDim;
-                    } else {
-                      w = Math.round((w * maxDim) / h);
-                      h = maxDim;
-                    }
-                  }
-
-                  const timestamp = Date.now();
-                  const imageEntity: CanvasEntity = {
-                    id: `image_paste_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
-                    type: 'image',
-                    x: Math.round(worldPt.x - w / 2),
-                    y: Math.round(worldPt.y - h / 2),
-                    width: w,
-                    height: h,
-                    src: dataUrl,
-                    isLockedToBackground: false,
-                    isLocked: false,
-                    fileName: file.name || 'Pasted Image',
-                    zIndex: 100,
-                    bounds: {
-                      minX: Math.round(worldPt.x - w / 2),
-                      minY: Math.round(worldPt.y - h / 2),
-                      maxX: Math.round(worldPt.x + w / 2),
-                      maxY: Math.round(worldPt.y + h / 2),
-                    },
-                    createdAt: timestamp,
-                    updatedAt: timestamp,
-                  };
-
-                  historyManager.inUndoGroup('Paste Image', () => {
-                    sceneStore.addEntity(imageEntity, true);
-                  });
-                  selectionStore.select(imageEntity.id);
-                };
-                img.src = dataUrl;
-              };
-              reader.readAsDataURL(file);
+              await pasteImageBlob(file);
               return;
             }
           }
         }
       }
 
-      // 3. Fallback: If no system text or image was found, check internal in-memory clipboard buffer
-      if (!clipboardText) {
-        const fallbackEntities = await getClipboardEntities();
-        if (fallbackEntities && fallbackEntities.length > 0) {
-          e.preventDefault();
-          pasteEntities(fallbackEntities);
-          return;
-        }
+      // 3. Fallback: check internal in-memory clipboard buffer or system clipboard entities
+      const fallbackEntities = await getClipboardEntities();
+      if (fallbackEntities && fallbackEntities.length > 0) {
+        e.preventDefault();
+        pasteEntities(fallbackEntities);
+        return;
+      }
+
+      // 4. Fallback: external plain text
+      if (clipboardText && clipboardText.trim().length > 0) {
+        e.preventDefault();
+        pastePlainText(clipboardText.trim());
+        return;
       }
     }
 
