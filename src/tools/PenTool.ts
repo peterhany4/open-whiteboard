@@ -290,10 +290,39 @@ export class PenToolEngine {
    * checks shape recognition, and commits to sceneStore
    */
   public onPointerUp(
-    _e?: React.PointerEvent<HTMLDivElement> | PointerEvent
+    e?: React.PointerEvent<HTMLDivElement> | PointerEvent,
+    camera?: CameraMatrix,
+    viewportRect?: DOMRect | null
   ): InkStrokeEntity | null {
     if (!this.isDrawing) return null;
     this.isDrawing = false;
+
+    // Module 170887 (class m & d): Capture final pointerup coordinate
+    if (e && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+      const activeInking = inkingStore.getState();
+      const penConfig = activeInking.pens[this.currentSlot as keyof typeof activeInking.pens];
+      const baseThickness = penConfig ? penConfig.thickness : 2;
+      const currentCamera = camera || { scale: this.currentCameraScale, positionX: 0, positionY: 0 };
+      let worldPt = screenToWorld({ x: e.clientX, y: e.clientY }, currentCamera, viewportRect);
+      if (this.activeRulerEdge !== 0) {
+        worldPt = rulerEngine.snapPoint(worldPt).point;
+      }
+      const lastPt = this.filteredPoints[this.filteredPoints.length - 1];
+      if (!lastPt || Math.hypot(worldPt.x - lastPt.x, worldPt.y - lastPt.y) > 0.15) {
+        // Module 170887 (class m & u: preJitterLastPointExtractor):
+        // Terminal contact point is anchored directly to the user's release coordinate
+        const finalPressure = 'pressure' in e && e.pressure > 0 ? e.pressure : (lastPt?.pressure ?? 0.5);
+        const finalPt: InkStrokePoint = {
+          x: parseFloat(worldPt.x.toFixed(2)),
+          y: parseFloat(worldPt.y.toFixed(2)),
+          pressure: finalPressure,
+          width: lastPt?.width ?? baseThickness,
+          time: e.timeStamp || Date.now(),
+        };
+        this.rawPoints.push(finalPt);
+        this.filteredPoints.push(finalPt);
+      }
+    }
 
     if (this.filteredPoints.length === 0) {
       this.emitLiveStroke(null);
@@ -444,12 +473,13 @@ export class PenToolEngine {
    * Folds micro-segments into smooth, continuous Bezier curves with scale-adaptive tolerance.
    */
   public applySegmentFolding(points: InkStrokePoint[], scale: number): InkStrokePoint[] {
-    if (points.length <= 4) return points;
+    if (points.length < 8) return points;
     const s = Math.max(0.1, Math.min(10.0, scale));
     const E = 0.1 + 1 / s;
-    const tol = ((3.5 * E) / 100) * 1.5;
+    const tol = (0.035 * E) / 100 * 2.5;
 
-    return this.ramerDouglasPeucker(points, tol);
+    const folded = this.ramerDouglasPeucker(points, tol);
+    return folded.length >= 2 ? folded : points;
   }
 
   private ramerDouglasPeucker(points: InkStrokePoint[], epsilon: number): InkStrokePoint[] {
@@ -522,31 +552,9 @@ export class PenToolEngine {
     const points = this.filteredPoints;
     if (points.length === 0) return;
 
-    // Stroke-tip velocity extrapolation predictor (Module 170887 class d)
-    let renderPoints = points;
-    if (points.length >= 2 && this.activeRulerEdge === 0) {
-      const pLast = points[points.length - 1];
-      const pPrev = points[points.length - 2];
-      const dx = pLast.x - pPrev.x;
-      const dy = pLast.y - pPrev.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > 0.5) {
-        const extrapDist = Math.min(10, dist * 0.6);
-        const predX = pLast.x + (dx / dist) * extrapDist;
-        const predY = pLast.y + (dy / dist) * extrapDist;
-        const predPoint: InkStrokePoint = {
-          x: parseFloat(predX.toFixed(2)),
-          y: parseFloat(predY.toFixed(2)),
-          pressure: pLast.pressure,
-          width: pLast.width,
-          time: (pLast.time || Date.now()) + 16,
-        };
-        renderPoints = [...points, predPoint];
-      }
-    }
-
-    const pathD = this.generateSmoothPath(renderPoints);
-    const outlineD = this.generateStrokeOutline(renderPoints, thickness);
+    // Real-time inking points (Module 170887 class d & v: smooth live trajectory matching committed ink)
+    const pathD = this.generateSmoothPath(points);
+    const outlineD = this.generateStrokeOutline(points, thickness);
 
     let arrowStartGeometry: ArrowHeadGeometry | undefined;
     let arrowEndGeometry: ArrowHeadGeometry | undefined;
@@ -771,13 +779,12 @@ export class PenToolEngine {
       target.incomingTangent2 = { x: a + u * _, y: h + u * M };
     }
 
+    // 2. Render outer bitangent contour runs (Module 357044 exact logic)
     let path = '';
     let runStart = 0;
     for (let i = 0; i < nodes.length; i++) {
-      const isLast = i === nodes.length - 1;
-      const isBreak = isNaN(nodes[i].outgoingTangent1.x);
-      if (isLast || isBreak) {
-        path += this.renderBitangentRun(nodes, runStart, isLast && !isBreak ? i : i - 1);
+      if (i === nodes.length - 1 || isNaN(nodes[i].outgoingTangent1.x)) {
+        path += this.renderBitangentRun(nodes, runStart, i);
         runStart = i + 1;
       }
     }

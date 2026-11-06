@@ -72,6 +72,7 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Ink-to-Shape Precision Engine & Rounded Fillet Corners** | Module 40049 (`AddBeautifiedInk`, `WetShapeRecognitionHappened`) | `ShapeRecognitionEngine.ts`, `PenTool.ts` | Circle-first classification priority, removal of circle-hijacking rectangle heuristics, smooth circular corner fillet generation (`rx, ry` rounded heads) |
 | **Microsoft Whiteboard Inking & Bezier Restoration** | Module 834265, 170887, 805859, 726577 | `PenTool.ts`, `CanvasEntities.tsx`, `CanvasViewport.tsx` | Pure Catmull-Rom cubic Bezier splines (C1 = P1 + (P2-P0)/6, C2 = P2 - (P3-P1)/6), elimination of jagged linear outline regression from Milestone 29, clean mouse/standard pen uniform width preservation, smooth Bezier pressure dynamics |
 | **Natural Handwriting Engine (Bitangent Envelopes, Segment Folding & Velocity Calligraphy)** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/45330.*.js`, `46977.*.js`, `BoardEditorComponent-84781932.*.js` | Modules 188610, 357044, 917068, 316556, 317294, 946193, 170887, 154175 | Authentic linear pressure affine curve R(p) = R_base * (1.5*p + 0.25) (Module 188610), circle bitangent envelope algorithm with circular joints (Module 357044), Schneider least-squares Bezier segment folding with scale-adaptive tolerance (Module 316556), collinear point simplifier (Module 317294), dynamic velocity calligraphy modulation for mouse/touch, velocity extrapolation stroke tip predictor (Module 170887), direct requestAnimationFrame inking render loop (Module 154175) |
+| **Inking End-Stroke Parity, 5 Unified Pen Slots & Color Picker** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/40049.*.js`, `45330.*.js`, `53113.*.js`, `8854.*.js` | Modules 357044, 900158, 786285, 4101, 12248, 578889, 434554 | Module 357044 exact run rendering loop `(i === e.length - 1 || isNaN(e[i].outgoingTangent1.x)) && (renderBitangentRun(nodes, s, i), s = i + 1)`, elimination of end-stroke truncation bug, 5 unified standard pen slots (Pen1..Pen5) with default swatches, custom Color Picker integration with hex/RGB support in PenPopover |
 
 
 ---
@@ -709,9 +710,32 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 36: Microsoft Whiteboard REA Inking End-Stroke Parity, 5 Unified Pen Slots & Custom Color Picker
+- [x] **36.1 REA End-Stroke Completion & Bitangent Envelope Truncation Fix (Eliminate "Cut Stroke" Bug):**
+  - In `src/tools/PenTool.ts`:
+    - Fix `buildBitangentEnvelope` to match exact Module 357044 logic: pass `i` rather than `i - 1`, ensuring the final circle node and ending arc cap are always rendered.
+    - In `onPointerUp(e)`: extract and sample the final pointer event coordinate so release micro-movements are recorded.
+    - Reconcile live velocity predictor with pointer-up termination to prevent any visual snap-back.
+- [x] **36.2 Unify 5 Pen Slots with Authentic Microsoft Whiteboard Engine Parity:**
+  - In `src/components/toolbar/InkToolbar.tsx` and `src/store/inkingStore.ts`:
+    - Configure 5 standard pen slots (`Pen1`, `Pen2`, `Pen3`, `Pen4`, `Pen5`) matching Module 900158 & 786285.
+    - Set default authentic palette colors (Pen 1: `#1F1F1F`, Pen 2: `#E71224`, Pen 3: `#02A556`, Pen 4: `#0069BF`, Pen 5: `#00B44B`).
+    - Guarantee all 5 slots use the exact same Catmull-Rom Bezier splines, bitangent circle envelope, pressure calibration, and velocity calligraphy.
+- [x] **36.3 Custom Color Picker in Pen Popover:**
+  - In `src/components/toolbar/PenPopover.tsx`:
+    - Add a custom Color Picker tile in the color palette section with native color dropper/picker and hex color selection.
+    - Update `recentColors` in `inkingStore` when a custom color is chosen.
+    - Show an active indicator ring when a custom color is active.
+- [x] **36.4 Automated Test Verification, Clean Production Build & Git Commit / Push:**
+  - Create test script `scratch/test_milestone36_pen_enhancements.js` verifying bitangent end-stroke node retention, 5 pen slots configuration, and color picker integration.
+  - Verify `npm run build` succeeds with 0 errors.
+  - Update `Plan.md` and commit/push changes to GitHub.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `35.5 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 35 Complete)`
-- **Current Active Sub-Task:** `Milestone 35 Complete — Standing by for Next Direction`
+- **Last Completed Sub-Task:** `36.4 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 36 Complete)`
+- **Current Active Sub-Task:** `Milestone 36 Complete — Standing by for Next Direction`
 - **Next Recommended Prompt:** `"Standing by for next user request or feature milestone"`

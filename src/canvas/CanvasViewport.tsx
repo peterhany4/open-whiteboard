@@ -1018,7 +1018,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ children }) => {
       selectTool.onPointerUp(e, camera, rect);
     }
     if (penTool.isCurrentlyDrawing()) {
-      penTool.onPointerUp(e);
+      penTool.onPointerUp(e, camera, rect);
     }
     if (highlighterTool.isCurrentlyDrawing()) {
       highlighterTool.onPointerUp(e);

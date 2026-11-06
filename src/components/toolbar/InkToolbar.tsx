@@ -91,7 +91,7 @@ export const InkToolbar: React.FC = () => {
     { slot: 'Pen2', label: 'Red Pen' },
     { slot: 'Pen3', label: 'Green Pen' },
     { slot: 'Pen4', label: 'Blue Pen' },
-    { slot: 'PenEffect', label: 'Galaxy / Special Pen' },
+    { slot: 'Pen5', label: 'Forest Green Pen' },
   ];
 
   return (

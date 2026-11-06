@@ -24,6 +24,7 @@ interface PenPopoverProps {
 
 export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const colorInputRef = useRef<HTMLInputElement>(null);
   const state = useInkingStore();
 
   // Milestone 30.1: Dynamic anchor positioning & viewport bounds clamping
@@ -130,6 +131,12 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
     : isLaser
     ? LASER_COLOR_SWATCHES
     : [...PEN_COLOR_SWATCHES, ...EFFECT_SWATCHES];
+
+  const isCustomColorSelected =
+    !currentEffect &&
+    !colorSwatches.some(
+      (s) => !s.effect && s.color.toUpperCase() === currentColor.toUpperCase()
+    );
 
   const handleThicknessSelect = (thickness: number) => {
     if (isPen) {
@@ -371,6 +378,90 @@ export const PenPopover: React.FC<PenPopoverProps> = ({ tool, onClose }) => {
               </button>
             );
           })}
+
+          {/* 3. Custom Color Picker Tile (Module 45173 & 8854: ColorPicker tool) */}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => colorInputRef.current?.click()}
+              title="Custom Color Picker"
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                border: 'none',
+                outline: 'none',
+                cursor: 'pointer',
+                position: 'relative',
+                padding: 0,
+                background: isCustomColorSelected
+                  ? currentColor
+                  : 'conic-gradient(from 0deg, #FF0000, #FF7700, #FFFF00, #00FF00, #00FFFF, #0066FF, #AA00FF, #FF0000)',
+                boxShadow: isCustomColorSelected
+                  ? '0 0 0 2px var(--colorNeutralBackground1), 0 0 0 4px var(--themePrimary)'
+                  : 'inset 0 0 0 1px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)',
+                transform: isCustomColorSelected ? 'scale(1.08)' : 'scale(1)',
+                transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {!isCustomColorSelected ? (
+                <div
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--colorNeutralBackground1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                  }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M12.5 1.5a1.414 1.414 0 0 1 2 2l-1 1-2-2 1-1zM10.5 3.5l2 2-7.5 7.5H3v-2l7.5-7.5zM2 13h12v1H2v-1z" />
+                  </svg>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: '#FFFFFF',
+                    boxShadow: '0 0 2px rgba(0,0,0,0.8)',
+                  }}
+                />
+              )}
+            </button>
+            <input
+              ref={colorInputRef}
+              type="color"
+              value={currentColor.startsWith('#') && currentColor.length === 7 ? currentColor : '#1F1F1F'}
+              onChange={(e) => {
+                const hex = e.target.value;
+                if (isPen) {
+                  inkingStore.setPenColor(tool as PenSlot, hex);
+                } else if (isHighlighter) {
+                  inkingStore.setHighlighterColor(hex);
+                } else if (isLaser) {
+                  inkingStore.setLaserColor(hex);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 0,
+                height: 0,
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
+              aria-label="Choose custom color"
+            />
+          </div>
         </div>
       </div>
 
