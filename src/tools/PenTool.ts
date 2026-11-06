@@ -704,7 +704,7 @@ export class PenToolEngine {
     if (points.length < 2) {
       if (points.length === 1) {
         const r = (points[0].width || defaultWidth) / 2;
-        return `M ${(points[0].x - r).toFixed(2)} ${points[0].y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(points[0].x + r).toFixed(2)} ${points[0].y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(points[0].x - r).toFixed(2)} ${points[0].y.toFixed(2)} Z`;
+        return `M ${(points[0].x - r).toFixed(2)} ${points[0].y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${(points[0].x + r).toFixed(2)} ${points[0].y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${(points[0].x - r).toFixed(2)} ${points[0].y.toFixed(2)} Z`;
       }
       return '';
     }
@@ -797,7 +797,7 @@ export class PenToolEngine {
     if (s === i) {
       const single = stroke[s];
       const r = single.radius;
-      return `M ${(single.center.x - r).toFixed(2)} ${single.center.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(single.center.x + r).toFixed(2)} ${single.center.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 0 ${(single.center.x - r).toFixed(2)} ${single.center.y.toFixed(2)} Z `;
+      return `M ${(single.center.x - r).toFixed(2)} ${single.center.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${(single.center.x + r).toFixed(2)} ${single.center.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${(single.center.x - r).toFixed(2)} ${single.center.y.toFixed(2)} Z `;
     }
 
     let d = '';
@@ -814,16 +814,16 @@ export class PenToolEngine {
         d += `L ${inter.x.toFixed(2)} ${inter.y.toFixed(2)} `;
       } else {
         d += `L ${curr.incomingTangent1.x.toFixed(2)} ${curr.incomingTangent1.y.toFixed(2)} `;
-        d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 0 1 ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
+        d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 0 0 ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
       }
       prev = curr;
       curr = next;
     }
 
-    // End cap
+    // End cap (Module 357044 & 247778: sweep flag 0 curves outwards into a convex hemispherical bullet dome)
     const isEndBigger = curr.radius > stroke[i - 1].radius;
     d += `L ${curr.incomingTangent1.x.toFixed(2)} ${curr.incomingTangent1.y.toFixed(2)} `;
-    d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 ${isEndBigger ? 1 : 0} 1 ${curr.incomingTangent2.x.toFixed(2)} ${curr.incomingTangent2.y.toFixed(2)} `;
+    d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 ${isEndBigger ? 1 : 0} 0 ${curr.incomingTangent2.x.toFixed(2)} ${curr.incomingTangent2.y.toFixed(2)} `;
 
     // Return pass on side 2
     prev = curr;
@@ -835,16 +835,16 @@ export class PenToolEngine {
         d += `L ${inter.x.toFixed(2)} ${inter.y.toFixed(2)} `;
       } else {
         d += `L ${curr.outgoingTangent2.x.toFixed(2)} ${curr.outgoingTangent2.y.toFixed(2)} `;
-        d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 0 1 ${curr.incomingTangent2.x.toFixed(2)} ${curr.incomingTangent2.y.toFixed(2)} `;
+        d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 0 0 ${curr.incomingTangent2.x.toFixed(2)} ${curr.incomingTangent2.y.toFixed(2)} `;
       }
       prev = curr;
       curr = next;
     }
 
-    // Start cap
+    // Start cap (Module 357044 & 247778: sweep flag 0 curves outwards into a convex hemispherical bullet dome)
     const isStartBigger = curr.radius > stroke[s + 1].radius;
     d += `L ${curr.outgoingTangent2.x.toFixed(2)} ${curr.outgoingTangent2.y.toFixed(2)} `;
-    d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 ${isStartBigger ? 1 : 0} 1 ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
+    d += `A ${curr.radius.toFixed(2)} ${curr.radius.toFixed(2)} 0 ${isStartBigger ? 1 : 0} 0 ${curr.outgoingTangent1.x.toFixed(2)} ${curr.outgoingTangent1.y.toFixed(2)} `;
     d += 'Z ';
 
     return d;

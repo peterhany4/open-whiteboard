@@ -73,6 +73,7 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 | **Microsoft Whiteboard Inking & Bezier Restoration** | Module 834265, 170887, 805859, 726577 | `PenTool.ts`, `CanvasEntities.tsx`, `CanvasViewport.tsx` | Pure Catmull-Rom cubic Bezier splines (C1 = P1 + (P2-P0)/6, C2 = P2 - (P3-P1)/6), elimination of jagged linear outline regression from Milestone 29, clean mouse/standard pen uniform width preservation, smooth Bezier pressure dynamics |
 | **Natural Handwriting Engine (Bitangent Envelopes, Segment Folding & Velocity Calligraphy)** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/45330.*.js`, `46977.*.js`, `BoardEditorComponent-84781932.*.js` | Modules 188610, 357044, 917068, 316556, 317294, 946193, 170887, 154175 | Authentic linear pressure affine curve R(p) = R_base * (1.5*p + 0.25) (Module 188610), circle bitangent envelope algorithm with circular joints (Module 357044), Schneider least-squares Bezier segment folding with scale-adaptive tolerance (Module 316556), collinear point simplifier (Module 317294), dynamic velocity calligraphy modulation for mouse/touch, velocity extrapolation stroke tip predictor (Module 170887), direct requestAnimationFrame inking render loop (Module 154175) |
 | **Inking End-Stroke Parity, 5 Unified Pen Slots & Color Picker** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/40049.*.js`, `45330.*.js`, `53113.*.js`, `8854.*.js` | Modules 357044, 900158, 786285, 4101, 12248, 578889, 434554 | Module 357044 exact run rendering loop `(i === e.length - 1 || isNaN(e[i].outgoingTangent1.x)) && (renderBitangentRun(nodes, s, i), s = i + 1)`, elimination of end-stroke truncation bug, 5 unified standard pen slots (Pen1..Pen5) with default swatches, custom Color Picker integration with hex/RGB support in PenPopover |
+| **Circle Arc Sweep Orientation & Full Hemispherical Cap Parity** | `ev_831acd44c31a321e3a17ab3924bd5869f9570d8df2628d65420e4a83373549de` | `blueboard/chunks/45330.*.js` | Modules 357044, 247778 | Module 247778 exact circularArc definition `A rx,ry 0 ${a ? 1 : 0} ${h ? 0 : 1} o,n` with `h = !0` evaluating to sweep flag 0, elimination of inverted half-cut circle caps, full convex bullet dome caps on start and end |
 
 
 ---
@@ -733,9 +734,26 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
+### Milestone 37: Microsoft Whiteboard REA Circle Arc Sweep Orientation & Full Hemispherical Cap Parity (Modules 357044 & 247778)
+- [x] **37.1 REA Bitangent Envelope Sweep Flag Alignment (Modules 357044 & 247778):**
+  - In `src/tools/PenTool.ts` (`renderBitangentRun`):
+    - Update the End Cap arc: `A ${curr.radius} ${curr.radius} 0 ${isEndBigger ? 1 : 0} 0 ${curr.incomingTangent2.x} ${curr.incomingTangent2.y}` (sweep flag `0`, bowing outwards into a full round dome).
+    - Update the Start Cap arc: `A ${curr.radius} ${curr.radius} 0 ${isStartBigger ? 1 : 0} 0 ${curr.outgoingTangent1.x} ${curr.outgoingTangent1.y}` (sweep flag `0`, bowing outwards into a full round dome).
+    - Update intermediate contour joints on Side 1 and Side 2 to use sweep flag `0` matching Module 247778.
+- [x] **37.2 Single-Node Circle Dot Arc Symmetry:**
+  - In `src/tools/PenTool.ts`:
+    - Ensure single-tap points (`s === i`) render two seamless 180° semi-circles using sweep flag `0` matching Module 357044:
+      `M (cx - r) cy A r r 0 0 0 (cx + r) cy A r r 0 0 0 (cx - r) cy Z`.
+- [x] **37.3 Automated Test Verification, Clean Production Build & Git Commit / Push:**
+  - Create test script `scratch/test_milestone37_caps.js` verifying that end cap and start cap coordinates reach maximum convex bounding extents beyond circle centers ($x > x_{\text{end}}$ and $x < x_{\text{start}}$), confirming full hemispherical domes without inward cuts.
+  - Run `npm run build` with 0 errors.
+  - Update `Plan.md` and commit/push changes to GitHub.
+
+---
+
 ## 4. Session Handoff & Resume Tracker
 > **Agent Note:** Always update these 3 fields before ending your response so the user can resume seamlessly after a rate limit or model switch.
 
-- **Last Completed Sub-Task:** `36.4 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 36 Complete)`
-- **Current Active Sub-Task:** `Milestone 36 Complete — Standing by for Next Direction`
+- **Last Completed Sub-Task:** `37.3 Automated Test Verification, Clean Production Build & Git Commit / Push (Milestone 37 Complete)`
+- **Current Active Sub-Task:** `Milestone 37 Complete — Standing by for Next Direction`
 - **Next Recommended Prompt:** `"Standing by for next user request or feature milestone"`

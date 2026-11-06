@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Cap Test</title></head>
+<body style="background: #222; color: #fff; font-family: sans-serif; padding: 20px;">
+  <h2>Sweep 1 (Inverted / Half cut circle - Old)</h2>
+  <svg width="300" height="100">
+    <!-- Center line: (50, 50) to (200, 50), radius 20 -->
+    <!-- in1 = (200, 70), in2 = (200, 30). Sweep 1 arcs into stroke (x < 200) -->
+    <!-- out2 = (50, 30), out1 = (50, 70). Sweep 1 arcs into stroke (x > 50) -->
+    <path d="M 50 70 L 200 70 A 20 20 0 0 1 200 30 L 50 30 A 20 20 0 0 1 50 70 Z" fill="#ff4444" />
+  </svg>
+
+  <h2>Sweep 0 (Authentic Module 357044 / 247778 - Full Round Bullet Dome)</h2>
+  <svg width="300" height="100">
+    <!-- in1 = (200, 70), in2 = (200, 30). Sweep 0 arcs OUTWARDS (x > 200 to 220) -->
+    <!-- out2 = (50, 30), out1 = (50, 70). Sweep 0 arcs OUTWARDS (x < 50 to 30) -->
+    <path d="M 50 70 L 200 70 A 20 20 0 0 0 200 30 L 50 30 A 20 20 0 0 0 50 70 Z" fill="#00e676" />
+  </svg>
+</body>
+</html>
