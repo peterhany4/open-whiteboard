@@ -18,6 +18,8 @@ release
 targets/
 rea-artifacts/
 scratch/pdfcraft-repo/
+scratch/dist_test/
+scratch/dist_verify/
 
 # Editor & OS
 .vscode/*

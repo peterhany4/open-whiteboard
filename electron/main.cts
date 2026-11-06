@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -110,10 +110,6 @@ function createWindow() {
   });
 
   log(`BrowserWindow created. HWND: ${mainWindow.getNativeWindowHandle().readInt32LE(0)}`);
-
-  Menu.setApplicationMenu(null);
-  mainWindow.removeMenu();
-  mainWindow.setMenuBarVisibility(false);
 
   if (state.isMaximized) {
     mainWindow.maximize();

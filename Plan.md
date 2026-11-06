@@ -751,27 +751,29 @@ You are an AI coding agent connected to **REA (`morluto/rea`)** via MCP/CLI. You
 
 ---
 
-### Milestone 38: Web & Desktop Eraser Shortcut (Alt+X / E) Resolution & Universal Object Copy/Paste (Ctrl+C / Ctrl+V) Engine
-- [x] **38.1 Bug Fix: Web Browser & Desktop Alt+X / E Eraser Tool Activation:**
+### Milestone 38: Strict Whitelisted Shortcut Engine (Alt+X Eraser Only) & Universal Object Copy/Paste (Ctrl+C / Ctrl+V)
+- [x] **38.1 Bug Fix: Web Browser Alt+X Eraser Tool Activation (Strictly Alt+X, No 'E', No 'Alt+E'):**
   - In `src/tools/ShortcutEngine.ts`:
-    - In web browsers, Windows Chrome and Edge intercept `Alt` to focus the browser's menu bar or wrench menu unless captured and stopped.
-    - Add `e.preventDefault()` and `e.stopPropagation()`.
-    - Support both physical key codes and character keys: `code === 'KeyX' || key === 'x'` with `e.altKey` (supporting Left Alt and Right Alt / `AltGr` on international layouts).
-    - Also support single-key `E` (and `Alt+E`) outside text inputs per Microsoft Whiteboard REA Module 40049 so users can switch to Eraser instantly with a single keystroke.
-    - Call `inkingStore.closePopover()`, `selectionStore.clearSelection()`, and `inkingStore.selectTool('Eraser')` so the toolbar updates immediately and pointer events on the canvas switch to erase mode.
-  - In `electron/main.cts`:
-    - Call `Menu.setApplicationMenu(null)`, `mainWindow.removeMenu()`, and `mainWindow.setMenuBarVisibility(false)` so desktop builds also never intercept `Alt`.
-- [x] **38.2 Canvas Object Clipboard Engine & Web Ctrl+V Paste Integration:**
+    - Intercept bare `Alt` on both `keydown` and `keyup` (`e.preventDefault()`), preventing Windows browsers (Chrome, Edge, Firefox) from activating/arming the window/system menu bar.
+    - Support both `code === 'KeyX'` and `key === 'x'` as well as `keyCode === 88` with `isAlt` (including Left Alt and Right Alt / `AltGr`).
+    - Add `keyup` fallback to guarantee `Alt+X` tool switching even if a browser extension or quirk consumes `keydown`.
+    - When `Alt+X` fires: switch `selectedTool` to `'Eraser'`, close active popovers via `inkingStore.closePopover()`, and clear selection via `selectionStore.clearSelection()`.
+    - Disallow single-key `E` and `Alt+E`: erasing is strictly mapped to `Alt+X`.
+    - Whitelist strictly the 11 shortcuts requested: `Alt+W`, `Alt+X`, `Ctrl++`, `Ctrl+-`, `Ctrl+Z/Ctrl+Y`, `Ctrl+D`, `Delete/Backspace`, `Ctrl+A`, `Escape`, `Ctrl+C`, `Ctrl+V`.
+    - Remove non-whitelisted shortcuts (`Ctrl+X` Cut, `Ctrl+L` Lock, `Ctrl+[/]` Layer ordering, single-key `E`, `Alt+E`).
+- [x] **38.2 Canvas Object Copy & Paste Engine (Ctrl+C & Ctrl+V):**
   - In `src/tools/ShortcutEngine.ts`:
-    - Add missing `Ctrl+V` (`key === 'v' || code === 'KeyV'`) handler in the `keydown` capture phase.
-    - When not focused in a text input, prevent browser default, call `getClipboardEntities()` (which checks system clipboard and `inMemoryClipboardBuffer`), and invoke `pasteEntities(entities)`.
-    - If system clipboard has an image blob, read via `navigator.clipboard.read()` and paste as an `ImageEntity`.
-  - In `src/canvas/CanvasViewport.tsx`:
-    - Update `handlePaste` to fall back to `getClipboardEntities()` / `inMemoryClipboardBuffer` when `e.clipboardData?.getData('text/plain')` is empty or blocked by browser permissions, ensuring pasted objects are created with incremental offset, registered in Undo/Redo history, and selected immediately.
+    - On `Ctrl+C`: copy selected canvas objects to system clipboard and in-memory buffer via `copySelectedToClipboard()`.
+    - On `Ctrl+V`: paste entities into the active canvas via `executeUniversalPaste()`.
+  - In `src/tools/clipboard.ts`:
+    - Universal object cloning supporting all canvas entities (ink strokes, sticky notes, note grids, text boxes, shapes, images, reactions, and PDF documents).
+    - Incremental spatial cascade offset (+24px, +48px) for consecutive pastes.
+    - Atomic Undo/Redo registration via `historyManager.inUndoGroup('Paste Objects', ...)`.
+    - Immediate selection of newly pasted entities.
 - [x] **38.3 Automated Test Verification, Clean Production Build & Git Commit / Push (Including scratch/ folder):**
-  - Create test script `scratch/test_milestone38_copy_paste_altx.js` verifying Alt+X/Alt+E/E eraser activation, object copy-to-clipboard serialization, and `Ctrl+V` object pasting with spatial offset and Undo/Redo tracking.
-  - Run `npm run build` with 0 errors.
-  - Update `Plan.md` and commit/push all changes (including `scratch/`) to GitHub.
+  - Run verification suite `scratch/test_milestone38_copy_paste_altx.js` verifying Alt+X activation, rejection of 'E' and 'Alt+E', whitelist enforcement, and `Ctrl+C` / `Ctrl+V` copy-paste with undo/redo.
+  - Run `npm run build` with 0 errors across renderer and electron.
+  - Update `Plan.md` and commit/push all changes to GitHub.
 
 ---
 
