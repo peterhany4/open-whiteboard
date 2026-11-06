@@ -65,10 +65,11 @@ export class ShortcutEngine {
     const keyCode = e.keyCode || e.which || 0;
 
     // Check modifier states robustly across OSes and keyboard layouts
+    // Supports both Left Alt and Right Alt / AltGr:
     const isAltGr = Boolean(e.getModifierState && e.getModifierState('AltGraph'));
     const isAlt = e.altKey || isAltGr;
-    // On Windows AltGr sets ctrlKey=true, so mask it out
-    const isCtrlOrMeta = (e.ctrlKey || e.metaKey) && !isAltGr;
+    // On Windows AltGr sets ctrlKey=true, so mask it out when Alt/AltGr is active
+    const isCtrlOrMeta = (e.ctrlKey || e.metaKey) && !isAlt;
 
     // 3. Intercept bare Alt keydown (prevents Windows Chrome / Edge / Firefox from arming the browser/system menu)
     if (key === 'alt' || code === 'AltLeft' || code === 'AltRight' || keyCode === 18) {
@@ -76,7 +77,7 @@ export class ShortcutEngine {
       return;
     }
 
-    // 4. Alt-based shortcuts: Alt+W (Pen Tool), Alt+X (Eraser Tool)
+    // 4. Alt-based shortcuts: Alt+W (Pen Tool), Alt+X (Eraser Tool) — supports both Left Alt & Right Alt (AltGr)
     if (isAlt && !isCtrlOrMeta) {
       const isW = key === 'w' || code === 'KeyW' || keyCode === 87;
       const isX = key === 'x' || code === 'KeyX' || keyCode === 88;
@@ -233,13 +234,14 @@ export class ShortcutEngine {
   /**
    * Browser resilience: KeyUp listener ensures Windows browser menu bar
    * is never armed upon Alt release, and acts as fallback if keydown was swallowed.
+   * Supports both Left Alt and Right Alt / AltGr.
    */
   private handleKeyUp = (e: KeyboardEvent) => {
     const key = e.key ? e.key.toLowerCase() : '';
     const code = e.code || '';
     const keyCode = e.keyCode || e.which || 0;
 
-    // Suppress menu bar activation on Alt release
+    // Suppress menu bar activation on Alt release (both Left Alt and Right Alt)
     if (key === 'alt' || code === 'AltLeft' || code === 'AltRight' || keyCode === 18) {
       e.preventDefault();
       return;
@@ -250,7 +252,7 @@ export class ShortcutEngine {
 
     const isAltGr = Boolean(e.getModifierState && e.getModifierState('AltGraph'));
     const isAlt = e.altKey || isAltGr;
-    const isCtrlOrMeta = (e.ctrlKey || e.metaKey) && !isAltGr;
+    const isCtrlOrMeta = (e.ctrlKey || e.metaKey) && !isAlt;
 
     if (isAlt && !isCtrlOrMeta) {
       const isX = key === 'x' || code === 'KeyX' || keyCode === 88;
